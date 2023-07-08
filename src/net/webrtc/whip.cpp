@@ -126,11 +126,12 @@ void Whip::StartNetwork(const std::string& url, void* loop_handle) {
 
     pc_ = new PeerConnection((uv_loop_t*)loop_handle, logger_, this);
 
-    if (!GetHostInfoByUrl(url, host_, port_, subpath_)) {
+    bool https_enable = false;
+    if (!GetHostInfoByUrl(url, host_, port_, subpath_, https_enable)) {
         CSM_THROW_ERROR("fail to get whip url by:%s", url.c_str());
     }
 
-    Start(host_, port_, subpath_);
+    Start(host_, port_, subpath_, https_enable);
 
     return;
 }
@@ -151,13 +152,24 @@ void Whip::SetReporter(StreamerReport* reporter) {
 }
 
 bool Whip::GetHostInfoByUrl(const std::string& url, std::string& host, 
-            uint16_t& port, std::string& subpath) {
-    const std::string scheme("https://");
+            uint16_t& port, std::string& subpath, bool& https_enable) {
+    const std::string https_scheme("https://");
+    const std::string http_scheme("http://");
     std::string whip_url(url);
-    size_t pos = whip_url.find(scheme);
+    std::string scheme;
+
+    size_t pos = whip_url.find(https_scheme);
     if (pos != 0) {
-        LogErrorf(logger_, "fail to find https://, url:%s", url.c_str());
-        return false;
+        pos = whip_url.find(http_scheme);
+        if (pos != 0) {
+            LogErrorf(logger_, "find to find http/https scheme, url:%s", url.c_str());
+            return false;
+        }
+        scheme = http_scheme;
+        https_enable = false;
+    } else {
+        scheme = https_scheme;
+        https_enable = true;
     }
     whip_url = whip_url.substr(scheme.length());
     std::vector<std::string> path_vec;
@@ -186,7 +198,7 @@ bool Whip::GetHostInfoByUrl(const std::string& url, std::string& host,
     return true;
 }
 
-int Whip::Start(const std::string& host, uint16_t port, const std::string& subpath) {
+int Whip::Start(const std::string& host, uint16_t port, const std::string& subpath, bool https_enable) {
     std::string offer_sdp = pc_->CreateOfferSdp(SEND_ONLY);
 
     if (offer_sdp.empty()) {
@@ -198,7 +210,7 @@ int Whip::Start(const std::string& host, uint16_t port, const std::string& subpa
     ReleaseHttpClient();
     std::map<std::string, std::string> headers;
     //hc_ = new HttpClient(loop_, host_, port_, this, logger_, true);
-    hc_ = new HttpClient(loop_, host_, port_, this, logger_, false);
+    hc_ = new HttpClient(loop_, host_, port_, this, logger_, https_enable);
     LogInfof(logger_, "http post host:%s, port:%d, subpath:%s",
             host_.c_str(), port_, subpath.c_str());
     start_ms_ = now_millisec();

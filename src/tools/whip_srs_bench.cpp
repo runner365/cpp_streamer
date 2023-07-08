@@ -102,7 +102,11 @@ public:
             }
             std::string url = GetUrl(i);
             LogWarnf(logger_, "start network url:%s", url.c_str());
-            whips_[i]->StartNetwork(url, loop_);
+            try {
+                whips_[i]->StartNetwork(url, loop_);
+            } catch(CppStreamException& e) {
+                LogErrorf(logger_, "whip start network exception:%s", e.what());
+            }
         }
         whip_index_ = i;
         if (whip_index_ >= bench_count_) {
@@ -277,7 +281,7 @@ int main(int argc, char** argv) {
     while ((opt = getopt(argc, argv, "i:o:l:n:h")) != -1) {
         switch (opt) {
             case 'i': strncpy(input_ts_name, optarg, sizeof(input_ts_name)); input_ts_name_ready = true; break;
-            /*eg: https://10.0.24.12:1985/rtc/v1/whip/?app=live&stream=1000*/
+            /*eg: http://10.0.24.12:1985/rtc/v1/whip/?app=live&stream=1000*/
             case 'o': strncpy(output_url_name, optarg, sizeof(output_url_name)); output_url_name_ready = true; break;
             case 'n':
             {

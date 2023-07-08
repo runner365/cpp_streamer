@@ -102,7 +102,11 @@ public:
             }
             std::string url = GetUrl(i);
             LogWarnf(logger_, "start network url:%s", url.c_str());
-            mediasoup_pusher_vec[i]->StartNetwork(url, loop_);
+            try {
+                mediasoup_pusher_vec[i]->StartNetwork(url, loop_);
+            } catch(CppStreamException& e) {
+                LogErrorf(logger_, "mediasoup push start network exception:%s", e.what());
+            }
         }
         whip_index_ = i;
         if (whip_index_ >= bench_count_) {

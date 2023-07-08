@@ -46,8 +46,8 @@ private:
 private:
     void ReleaseHttpClient();
     bool GetHostInfoByUrl(const std::string& url, std::string& host, 
-            uint16_t& port, std::string& subpath);
-    int Start(const std::string& host, uint16_t port, const std::string& subpath);
+            uint16_t& port, std::string& subpath, bool& https_enable);
+    int Start(const std::string& host, uint16_t port, const std::string& subpath, bool https_enable);
 
 private:
     Logger* logger_ = nullptr;

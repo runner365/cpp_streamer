@@ -55,7 +55,11 @@ public:
         whip_streamer_->SetLogger(logger_);
         whip_streamer_->SetReporter(this);
         LogInfof(logger_, "start network url:%s", dst_url_.c_str());
-        whip_streamer_->StartNetwork(dst_url_, loop_handle);
+        try {
+            whip_streamer_->StartNetwork(dst_url_, loop_handle);
+        } catch(CppStreamException& e) {
+            LogErrorf(logger_, "whip start network exception:%s", e.what());
+        }
         tsdemux_streamer_->AddSinker(whip_streamer_);
         return 0;
 

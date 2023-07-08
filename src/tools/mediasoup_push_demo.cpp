@@ -55,8 +55,11 @@ public:
         mspush_streamer_->SetLogger(logger_);
         mspush_streamer_->SetReporter(this);
         LogInfof(logger_, "start network url:%s", dst_url_.c_str());
-        mspush_streamer_->StartNetwork(dst_url_, loop_handle);
-
+        try {
+            mspush_streamer_->StartNetwork(dst_url_, loop_handle);
+        } catch(CppStreamException& e) {
+            LogErrorf(logger_, "mediasoup push start network exception:%s", e.what());
+        }
         tsdemux_streamer_->AddSinker(mspush_streamer_);
         return 0;
 
