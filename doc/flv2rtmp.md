@@ -1,20 +1,19 @@
-# flv to mpegts开发示例
+# 读取flv文件做rtmp推流开发示例
 ## 1. 简介
 cpp streamer是音视频组件，提供串流方式开发模式，可以理解成gstreamer的C++版本。
 
 
-flv文件转换成mpegts的实现，使用两个组件:
+读取flv文件做rtmp推流的实现，使用两个组件:
 * flvdemux组件
-* mpegtsmux组件
+* rtmppublish组件
 
 实现如下图
 
-![cpp_stream exampe1](imgs/flv2mpegts.png)
+![cpp_stream exampe1](imgs/flv2rtmppublish.png)
 
 * 先读取flv文件
 * 使用flvdemux组件：source接口导入文件二进制流，解析后，通过sinker接口输出视频+音频的媒体流；
-* 使用mpegtsmux组件: source接口导入上游解析后的媒体流后，组件内部进行mpegts的封装，再通过sinker接口输出mpegts格式；
-* 通过mpegts mux组件的sinker接口组件输出，写文件得到mpegts文件；
+* 使用rtmppublish组件: source接口导入上游解析后的媒体流后，组件内部进行rtmp网络传输格式的封装，再通过网络发送给rtmp服务器(如srs服务)；
 
 ## 2. 代码开发实现
 代码实现在: src/tools/flv2rtmppublish_streamer.cpp
@@ -47,7 +46,7 @@ public:
 # 2.2 创建组件
 创建组件代码，[详细代码flv2rtmppublish_streamer.cpp](../src/tools/flv2rtmppublish_streamer.cpp)
 ```
-class Flv2TsStreamerMgr : public CppStreamerInterface, public StreamerReport
+class Flv2RtmpPublishStreamerMgr : public CppStreamerInterface, public StreamerReport
 {
     int MakeStreamers() {
         CppStreamerFactory::SetLogger(s_logger);//设置日志输出
@@ -57,12 +56,13 @@ class Flv2TsStreamerMgr : public CppStreamerInterface, public StreamerReport
         flv_demux_streamer_->SetLogger(logger_);//设置模块日志输出
         flv_demux_streamer_->SetReporter(this);//设置消息报告
         
-        ts_mux_streamer_ = CppStreamerFactory::MakeStreamer("mpegtsmux");//创建mpegtsmux的组件
-        ts_mux_streamer_->SetLogger(logger_);//设置模块日志输出
-        ts_mux_streamer_->SetReporter(this);//设置消息报告
-        
-        flv_demux_streamer_->AddSinker(ts_mux_streamer_);//flvdemux组件对象设置下游为：mpegtsmux的组件
-        ts_mux_streamer_->AddSinker(this);//mpegtsmux组件设置下游(写mpegts文件)
+        rtmppublish_streamer_ = CppStreamerFactory::MakeStreamer("rtmppublish");//创建rtmppublish组件
+        rtmppublish_streamer_->SetLogger(logger_);//设置模块日志输出
+        rtmppublish_streamer_->SetReporter(this);//设置消息报告
+        rtmppublish_streamer_->StartNetwork(dst_url_, loop_handle);//设置rtmp目的url和libuv网络loop句柄
+
+        //设置flvdemux组件的下一跳为rtmppublish组件
+        flvdemux_streamer_->AddSinker(rtmppublish_streamer_);
         return 0;
     }
 }
@@ -91,27 +91,3 @@ class Flv2TsStreamerMgr : public CppStreamerInterface, public StreamerReport
     }
 ```
 
-# 2.4 mpegts文件输出
-文件输出
-```
-class Flv2TsStreamerMgr : public CppStreamerInterface, public StreamerReport
-{
-    int MakeStreamers() {
-        //......
-        flv_demux_streamer_->AddSinker(ts_mux_streamer_);//flvdemux组件对象设置下游为：mpegtsmux的组件
-        //......
-        return 0;
-    }
-public:
-    //接受mpegmux组件的sinker输出接口数据
-    virtual int SourceData(Media_Packet_Ptr pkt_ptr) override {
-        FILE* file_p = fopen(filename_.c_str(), "ab+");
-        if (file_p) {
-            fwrite(pkt_ptr->buffer_ptr_->Data(), 1, pkt_ptr->buffer_ptr_->DataLen(), file_p);
-            fclose(file_p);
-        }
-        return 0;
-    }
-
-}
-```
