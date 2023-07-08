@@ -1,0 +1,212 @@
+./__cmake
+./__cmake/*
+# CMake
+cmake-build-debug/
+
+./build
+./build/*
+objs
+objs/*
+hlsfiles
+hlsfiles/*
+3rdparty/libsrtp
+3rdparty/openssl
+
+*.obj
+*.slo
+*.lo
+*.o
+*.gch
+*.pch
+*.so
+*.dylib
+*.dll
+*.bak
+*.swp
+.project
+media_server
+cpp_media_server
+tags
+tmp
+
+*.log
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake ================================
+bin/
+build/
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+
+############################## MacOS  ##############################
+.DS_Store
+._.DS_Store
+Thumbs.db
+3rdparty/CMakeFiles
+CMakeFiles/
+output
+out
+
+############################# XCode   #############################
+# Xcode
+#
+# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
+## User settings
+xcuserdata/
+
+.DS_Store
+*.swp
+*~.nib
+*.pyc
+
+build/
+
+*.pbxuser
+*.perspective
+*.perspectivev3
+
+*.mode1v3
+*.mode2v3
+
+## Xcode 8 and earlier
+*.xcscmblueprint
+*.xccheckout
+*.xcworkspace
+
+## Build generated
+build/
+DerivedData/
+
+## Various settings
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+profile
+
+## Other
+*.moved-aside
+*.xcuserstate
+
+## Obj-C/Swift specific
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.idea
+
+# CocoaPods
+#
+# We recommend against adding the Pods directory to your .gitignore. However
+# you should judge for yourself, the pros and cons are mentioned at:
+# https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
+Pods
+
+# Carthage
+#
+# Add this line if you want to avoid checking in source code from Carthage dependencies.
+# Carthage/Checkouts
+
+Carthage/Build
+
+# fastlane
+#
+# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
+# screenshots whenever they are needed.
+# For more information about the recommended setup visit:
+# https://github.com/fastlane/fastlane/blob/master/fastlane/docs/Gitignore.md
+
+fastlane/report.xml
+fastlane/screenshots
+
+#Code Injection
+#
+# After new code Injection tools there's a generated folder /iOSInjectionProject
+# https://github.com/johnno1962/injectionforxcode
+
+iOSInjectionProject/
+
+############################## IDE    ##############################
+.vscode/
+
+
+__cmake
+__cmake/*
+
+
+############################## libsrtp ##############################
+# Misc crap
+*~
+old
+old?
+*.pc
+
+# Object files
+*.o
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# srtp things
+build
+Debug
+Makefile
+Root
+autom4te.cache
+config.log
+config.status
+crypto/include/config.h
+crypto/test/aes_calc
+crypto/test/cipher_driver
+crypto/test/datatypes_driver
+crypto/test/env
+crypto/test/kernel_driver
+crypto/test/sha1_driver
+crypto/test/stat_driver
+tables/aes_tables
+test/rdbx_driver
+test/replay_driver
+test/roc_driver
+test/rtp_decoder
+test/rtpw
+test/srtp_driver
+test/test_srtp
+
+######################### libsdptransform ###############################
+/deps/
+/build/
