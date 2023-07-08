@@ -126,29 +126,29 @@ ENDIF ()
 
 
 ###############################################################
-# example: whip client demo
-add_executable(whip_demo
+# example: whip srs demo
+add_executable(whip_srs_demo
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
-            ${PROJECT_SOURCE_DIR}/src/tools/whip_demo.cpp)
-add_dependencies(whip_demo whip openssl libsrtp)
+            ${PROJECT_SOURCE_DIR}/src/tools/whip_srs_demo.cpp)
+add_dependencies(whip_srs_demo whip openssl libsrtp)
 
 IF (APPLE)
-target_link_libraries(whip_demo dl z m srtp2 ssl crypto pthread uv)
+target_link_libraries(whip_srs_demo dl z m srtp2 ssl crypto pthread uv)
 ELSEIF (UNIX)
-target_link_libraries(whip_demo rt dl z m srtp2 ssl crypto pthread uv)
+target_link_libraries(whip_srs_demo rt dl z m srtp2 ssl crypto pthread uv)
 ENDIF ()
 
 ###############################################################
-# example: whip bench
-add_executable(whip_bench
+# example: whip srs bench
+add_executable(whip_srs_bench
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
-            ${PROJECT_SOURCE_DIR}/src/tools/whip_bench.cpp)
-add_dependencies(whip_bench whip openssl libsrtp)
+            ${PROJECT_SOURCE_DIR}/src/tools/whip_srs_bench.cpp)
+add_dependencies(whip_srs_bench whip openssl libsrtp)
 
 IF (APPLE)
-target_link_libraries(whip_bench dl z m srtp2 ssl crypto pthread uv)
+target_link_libraries(whip_srs_bench dl z m srtp2 ssl crypto pthread uv)
 ELSEIF (UNIX)
-target_link_libraries(whip_bench rt dl z m srtp2 ssl crypto pthread uv)
+target_link_libraries(whip_srs_bench rt dl z m srtp2 ssl crypto pthread uv)
 ENDIF ()
 
 ###############################################################
