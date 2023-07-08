@@ -44,6 +44,34 @@ http 参数: roomId=200&userId=1000, 注意roomId和userId两个参数都是必�
 ffmpeg -i src.mp4 -c:v libx264 -r 25 -g 100 -profile baseline -c:a libopus -ar 48000 -ac 2 -ab 32k -f mpegts webrtc.ts
 ```
 
+### 1.3 mediasoup broadcaster缺陷与修改
+mediasoup broadcaster接口是对我提供https api做信令交换。
+
+但是其有前提：<b> 推流所在的roomId必须提前存在，否则broadcaster创建失败</b>
+
+所以，需要修改mediasoup-demo的源码server.js:
+```
+    expressApp.param(
+        'roomId', (req, res, next, roomId) =>
+        {
+            queue.push(async () =>
+                {
+                    consumerReplicas = 0;
+                    req.room = await getOrCreateRoom({ roomId, consumerReplicas });
+                    next();
+                }).catch((error) =>
+                        {
+                            logger.error('room creation or room joining failed:%o', error);
+ 
+                            reject(error);
+                        });
+        });
+```
+
+原有代码：在http api检测roomId的房间是否存在，若不存在，拒绝创建broadcaster;
+
+新代码: 在http api检测roomId的房间是否存在，若不存在，创建该roomId的新房间;
+
 ## 2. 代码开发实现
 代码实现在: [src/tools/mediasoup_push_bench.cpp](../src/tools/mediasoup_push_bench.cpp)
 

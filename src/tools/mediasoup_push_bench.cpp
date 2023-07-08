@@ -277,7 +277,7 @@ int main(int argc, char** argv) {
     while ((opt = getopt(argc, argv, "i:o:l:n:h")) != -1) {
         switch (opt) {
             case 'i': strncpy(input_ts_name, optarg, sizeof(input_ts_name)); input_ts_name_ready = true; break;
-            //./mediasoup_push_bench -i ~/movies/webrtc.ts -o "https://xxxxx.com:4443?roomId=200&userId=1000" -n 10
+            //./mediasoup_push_bench -i ~/movies/webrtc.ts -o "https://xxxxx.com:4443?roomId=200&userId=1000" -n 100
             case 'o': strncpy(output_url_name, optarg, sizeof(output_url_name)); output_url_name_ready = true; break;
             case 'n':
             {
