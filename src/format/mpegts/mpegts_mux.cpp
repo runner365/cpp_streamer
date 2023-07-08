@@ -1,0 +1,968 @@
+#include "mpegts_mux.hpp"
+#include "mpegts_pub.hpp"
+#include "byte_stream.hpp"
+#include "audio_header.hpp"
+#include "h264_h265_header.hpp"
+#include "logger.hpp"
+#include "uuid.hpp"
+
+void* make_mpegtsmux_streamer() {
+    cpp_streamer::MpegtsMux* muxer = new cpp_streamer::MpegtsMux();
+
+    return muxer;
+}
+
+void destroy_mpegtsmux_streamer(void* streamer) {
+    cpp_streamer::MpegtsMux* muxer = (cpp_streamer::MpegtsMux*)streamer;
+
+    delete muxer;
+}
+
+namespace cpp_streamer
+{
+static const uint32_t crc32table[256] = {
+    0x00000000, 0xB71DC104, 0x6E3B8209, 0xD926430D, 0xDC760413, 0x6B6BC517,
+    0xB24D861A, 0x0550471E, 0xB8ED0826, 0x0FF0C922, 0xD6D68A2F, 0x61CB4B2B,
+    0x649B0C35, 0xD386CD31, 0x0AA08E3C, 0xBDBD4F38, 0x70DB114C, 0xC7C6D048,
+    0x1EE09345, 0xA9FD5241, 0xACAD155F, 0x1BB0D45B, 0xC2969756, 0x758B5652,
+    0xC836196A, 0x7F2BD86E, 0xA60D9B63, 0x11105A67, 0x14401D79, 0xA35DDC7D,
+    0x7A7B9F70, 0xCD665E74, 0xE0B62398, 0x57ABE29C, 0x8E8DA191, 0x39906095,
+    0x3CC0278B, 0x8BDDE68F, 0x52FBA582, 0xE5E66486, 0x585B2BBE, 0xEF46EABA,
+    0x3660A9B7, 0x817D68B3, 0x842D2FAD, 0x3330EEA9, 0xEA16ADA4, 0x5D0B6CA0,
+    0x906D32D4, 0x2770F3D0, 0xFE56B0DD, 0x494B71D9, 0x4C1B36C7, 0xFB06F7C3,
+    0x2220B4CE, 0x953D75CA, 0x28803AF2, 0x9F9DFBF6, 0x46BBB8FB, 0xF1A679FF,
+    0xF4F63EE1, 0x43EBFFE5, 0x9ACDBCE8, 0x2DD07DEC, 0x77708634, 0xC06D4730,
+    0x194B043D, 0xAE56C539, 0xAB068227, 0x1C1B4323, 0xC53D002E, 0x7220C12A,
+    0xCF9D8E12, 0x78804F16, 0xA1A60C1B, 0x16BBCD1F, 0x13EB8A01, 0xA4F64B05,
+    0x7DD00808, 0xCACDC90C, 0x07AB9778, 0xB0B6567C, 0x69901571, 0xDE8DD475,
+    0xDBDD936B, 0x6CC0526F, 0xB5E61162, 0x02FBD066, 0xBF469F5E, 0x085B5E5A,
+    0xD17D1D57, 0x6660DC53, 0x63309B4D, 0xD42D5A49, 0x0D0B1944, 0xBA16D840,
+    0x97C6A5AC, 0x20DB64A8, 0xF9FD27A5, 0x4EE0E6A1, 0x4BB0A1BF, 0xFCAD60BB,
+    0x258B23B6, 0x9296E2B2, 0x2F2BAD8A, 0x98366C8E, 0x41102F83, 0xF60DEE87,
+    0xF35DA999, 0x4440689D, 0x9D662B90, 0x2A7BEA94, 0xE71DB4E0, 0x500075E4,
+    0x892636E9, 0x3E3BF7ED, 0x3B6BB0F3, 0x8C7671F7, 0x555032FA, 0xE24DF3FE,
+    0x5FF0BCC6, 0xE8ED7DC2, 0x31CB3ECF, 0x86D6FFCB, 0x8386B8D5, 0x349B79D1,
+    0xEDBD3ADC, 0x5AA0FBD8, 0xEEE00C69, 0x59FDCD6D, 0x80DB8E60, 0x37C64F64,
+    0x3296087A, 0x858BC97E, 0x5CAD8A73, 0xEBB04B77, 0x560D044F, 0xE110C54B,
+    0x38368646, 0x8F2B4742, 0x8A7B005C, 0x3D66C158, 0xE4408255, 0x535D4351,
+    0x9E3B1D25, 0x2926DC21, 0xF0009F2C, 0x471D5E28, 0x424D1936, 0xF550D832,
+    0x2C769B3F, 0x9B6B5A3B, 0x26D61503, 0x91CBD407, 0x48ED970A, 0xFFF0560E,
+    0xFAA01110, 0x4DBDD014, 0x949B9319, 0x2386521D, 0x0E562FF1, 0xB94BEEF5,
+    0x606DADF8, 0xD7706CFC, 0xD2202BE2, 0x653DEAE6, 0xBC1BA9EB, 0x0B0668EF,
+    0xB6BB27D7, 0x01A6E6D3, 0xD880A5DE, 0x6F9D64DA, 0x6ACD23C4, 0xDDD0E2C0,
+    0x04F6A1CD, 0xB3EB60C9, 0x7E8D3EBD, 0xC990FFB9, 0x10B6BCB4, 0xA7AB7DB0,
+    0xA2FB3AAE, 0x15E6FBAA, 0xCCC0B8A7, 0x7BDD79A3, 0xC660369B, 0x717DF79F,
+    0xA85BB492, 0x1F467596, 0x1A163288, 0xAD0BF38C, 0x742DB081, 0xC3307185,
+    0x99908A5D, 0x2E8D4B59, 0xF7AB0854, 0x40B6C950, 0x45E68E4E, 0xF2FB4F4A,
+    0x2BDD0C47, 0x9CC0CD43, 0x217D827B, 0x9660437F, 0x4F460072, 0xF85BC176,
+    0xFD0B8668, 0x4A16476C, 0x93300461, 0x242DC565, 0xE94B9B11, 0x5E565A15,
+    0x87701918, 0x306DD81C, 0x353D9F02, 0x82205E06, 0x5B061D0B, 0xEC1BDC0F,
+    0x51A69337, 0xE6BB5233, 0x3F9D113E, 0x8880D03A, 0x8DD09724, 0x3ACD5620,
+    0xE3EB152D, 0x54F6D429, 0x7926A9C5, 0xCE3B68C1, 0x171D2BCC, 0xA000EAC8,
+    0xA550ADD6, 0x124D6CD2, 0xCB6B2FDF, 0x7C76EEDB, 0xC1CBA1E3, 0x76D660E7,
+    0xAFF023EA, 0x18EDE2EE, 0x1DBDA5F0, 0xAAA064F4, 0x738627F9, 0xC49BE6FD,
+    0x09FDB889, 0xBEE0798D, 0x67C63A80, 0xD0DBFB84, 0xD58BBC9A, 0x62967D9E,
+    0xBBB03E93, 0x0CADFF97, 0xB110B0AF, 0x060D71AB, 0xDF2B32A6, 0x6836F3A2,
+    0x6D66B4BC, 0xDA7B75B8, 0x035D36B5, 0xB440F7B1
+};
+
+static uint32_t mpeg_crc32(uint32_t crc, const uint8_t *buffer, uint32_t size)
+{  
+    unsigned int i;
+
+    for (i = 0; i < size; i++) {
+        crc = crc32table[(crc ^ buffer[i]) & 0xff] ^ (crc >> 8);  
+    }  
+    return crc ;  
+}
+
+uint8_t MpegtsMux::H264_AUD_DATA[] = {0x00, 0x00, 0x00, 0x01, 0x09, 0xff};
+uint8_t MpegtsMux::H265_AUD_DATA[] = {0x00, 0x00, 0x00, 0x01, 0x46, 0x01, 0x50};
+
+uint8_t* MpegtsMux::GetH264AudData(size_t& len) {
+    len = sizeof(H264_AUD_DATA);
+    return H264_AUD_DATA;
+}
+
+uint8_t* MpegtsMux::GetH265AudData(size_t& len) {
+    len = sizeof(H265_AUD_DATA);
+    return H265_AUD_DATA;
+}
+
+/*
+sync_byte 8 
+transport_error_indicator 1 
+payload_unit_start_indicator 1 
+transport_priority 1 
+PID 13 
+transport_scrambling_control 2 
+adaptation_field_control 2 
+continuity_counter 4
+
+0b 
+*/
+#define MPEGTS_MUX_NAME "mpegtsmux"
+
+MpegtsMux::MpegtsMux() {
+    name_ = MPEGTS_MUX_NAME;
+    name_ += "_";
+    name_ += UUID::MakeUUID();
+
+    memset(pat_data_, 0xff, TS_PACKET_SIZE);
+    memset(pmt_data_, 0xff, TS_PACKET_SIZE);
+
+    pat_data_[0] = 0x47;//sync_byte(8): 0x47
+    pat_data_[1] = 0x40;//transport_error_indicator(1): 0
+                        //payload_unit_start_indicator(1): 1
+                        //transport_priority(1): 0
+    pat_data_[2] = 0x00;//PID(13): 0
+    pat_data_[3] = 0x10;//transport_scrambling_control(2): 0
+                        //adaptation_field_control(2): 0b01, not adaptation_field and only payload
+                        //continuity_counter(4): 0
+    pat_data_[4] = 0x00;//adaptation_field_length(8):0
+
+
+    pmt_data_[0] = 0x47;//sync_byte(8): 0x47
+    pmt_data_[1] = 0x50;//transport_error_indicator(1): 0
+                        //payload_unit_start_indicator(1): 1
+                        //transport_priority(1): 0
+    pmt_data_[2] = 0x01;//PID(13): 0x1001, 4097
+    pmt_data_[3] = 0x10;//transport_scrambling_control(2): 0
+                        //adaptation_field_control(2): 0b01, not adaptation_field and only payload
+                        //continuity_counter(4): 0
+    pmt_data_[4] = 0x00;//adaptation_field_length(8):0
+}
+
+MpegtsMux::~MpegtsMux() {
+
+}
+
+std::string MpegtsMux::StreamerName() {
+    return name_;
+}
+
+void MpegtsMux::SetLogger(Logger* logger) {
+    logger_ = logger;
+}
+
+int MpegtsMux::AddSinker(CppStreamerInterface* sinker) {
+    if (sinker == nullptr) {
+        return sinkers_.size();
+    }
+    sinkers_[sinker->StreamerName()] = sinker;
+    return sinkers_.size();
+}
+
+int MpegtsMux::RemoveSinker(const std::string& name) {
+    return sinkers_.erase(name);
+}
+
+void MpegtsMux::SetReporter(StreamerReport* reporter) {
+    report_ = reporter;
+}
+
+int MpegtsMux::SourceData(Media_Packet_Ptr pkt_ptr) {
+    if (!pkt_ptr) {
+        return -1;
+    }
+    return InputPacket(pkt_ptr);
+}
+
+void MpegtsMux::ReportEvent(const std::string& type, const std::string& value) {
+    if (report_) {
+        report_->OnReport(name_, type, value);
+    }
+}
+
+void MpegtsMux::StartNetwork(const std::string& url, void* loop_handle) {
+    return;
+}
+
+void MpegtsMux::AddOption(const std::string& key, const std::string& value) {
+    return;
+}
+
+int MpegtsMux::WritePat() {
+    int ret = GeneratePat();
+    if (ret < 0) {
+        return ret;
+    }
+    Media_Packet_Ptr pkt_ptr;
+    TsOutput(pkt_ptr, pat_data_);
+    return 0;
+}
+
+int MpegtsMux::WritePmt() {
+    int ret = GeneratePmt();
+    if (ret < 0) {
+        ReportEvent("error", "Generate Pmt error");
+        return ret;
+    }
+    Media_Packet_Ptr pkt_ptr;
+    TsOutput(pkt_ptr, pmt_data_);
+    return 0;
+}
+
+int MpegtsMux::InputPacket(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->av_type_ == MEDIA_METADATA_TYPE) {
+        LogInfof(logger_, "mpegts mux discard metadata packet");
+        return 0;
+    }
+
+    if (!ready_ && (!video_ready_ || !audio_ready_) && (wait_queue_.size() < 30)) {
+        if (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE) {
+            video_ready_ = true;
+            SetVideoCodec(pkt_ptr->codec_type_);
+            LogInfof(logger_, "set video codec type:%s", codectype_tostring(pkt_ptr->codec_type_).c_str());
+        } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
+            audio_ready_ = true;
+            LogInfof(logger_, "set opus codec type:%s", codectype_tostring(pkt_ptr->codec_type_).c_str());
+            SetAudioCodec(pkt_ptr->codec_type_);
+        }
+        wait_queue_.push(pkt_ptr);
+        return 0;
+    }
+
+    ready_ = true;
+
+    if (last_patpmt_ts_ < 0 || (pkt_ptr->dts_ - last_patpmt_ts_) >= patpmt_interval_) {
+        WritePat();
+        WritePmt();
+        last_patpmt_ts_ = pkt_ptr->dts_;
+    }
+
+    while (wait_queue_.size() > 0) {
+        auto current_pkt_ptr = wait_queue_.front();
+        wait_queue_.pop();
+        HandlePacket(current_pkt_ptr);
+    }
+    return HandlePacket(pkt_ptr);
+}
+
+int MpegtsMux::HandlePacket(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE) {
+        SetVideoCodec(pkt_ptr->codec_type_);
+        return HandleVideo(pkt_ptr);
+    } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
+        SetAudioCodec(pkt_ptr->codec_type_);
+        return HandleAudio(pkt_ptr);
+    } else {
+        char error_sz[128];
+        snprintf(error_sz, sizeof(error_sz), "packet av type(%d) is unkown", pkt_ptr->av_type_);
+        ReportEvent("error", error_sz);
+        LogErrorf(logger_, "packet av type(%d) is unkown",
+                pkt_ptr->av_type_);
+    }
+    return 0;
+}
+int MpegtsMux::HandleVideo(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->codec_type_ == MEDIA_CODEC_H264) {
+        return HandleH264(pkt_ptr);
+    } else if (pkt_ptr->codec_type_ == MEDIA_CODEC_VP8) {
+        return HandleVpx(pkt_ptr);
+    } else if (pkt_ptr->codec_type_ == MEDIA_CODEC_H265) {
+        return HandleH265(pkt_ptr);
+    } else {
+        char error_sz[128];
+        snprintf(error_sz, sizeof(error_sz), "handle video can't handle codec type:%d", pkt_ptr->codec_type_);
+        ReportEvent("error", error_sz);
+        LogErrorf(logger_, "handle video can't handle codec type:%d", pkt_ptr->codec_type_);
+    }
+    return 0;
+}
+
+int MpegtsMux::HandleH264(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->is_seq_hdr_) {
+        uint8_t* data   = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+        size_t data_len = pkt_ptr->buffer_ptr_->DataLen();
+
+        GetSpsPpsFromExtraData(pps_, pps_len_, sps_, sps_len_, 
+                            data, data_len);
+        return 0;
+    }
+
+    std::vector<std::shared_ptr<DataBuffer>> nalus;
+    bool ret = Avcc2Nalus((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
+                    pkt_ptr->buffer_ptr_->DataLen(), nalus);
+    if (!ret) {
+        ReportEvent("error", "Avcc to Nalus error");
+        return -1;
+    }
+
+    Media_Packet_Ptr nalu_pkt_ptr = std::make_shared<Media_Packet>();
+    for (std::shared_ptr<DataBuffer> item : nalus) {
+        uint8_t* data = (uint8_t*)item->Data();
+        size_t data_len = (size_t)item->DataLen();
+
+        uint8_t nalu_type = data[4] & 0x1f;
+        if (H264_IS_AUD(nalu_type)) {
+            continue;
+        }
+        if (H264_IS_PPS(nalu_type)) {
+            pps_len_ = data_len;
+            memcpy(pps_, data, pps_len_);
+            continue;
+        }
+        if (H264_IS_SPS(nalu_type)) {
+            sps_len_ = data_len;
+            memcpy(sps_, data, sps_len_);
+            continue;
+        }
+        nalu_pkt_ptr->copy_properties(pkt_ptr);
+        nalu_pkt_ptr->buffer_ptr_->Reset();
+        
+        size_t aud_data_len = 0;
+        uint8_t* aud_data = GetH264AudData(aud_data_len);
+        nalu_pkt_ptr->buffer_ptr_->AppendData((char*)aud_data, aud_data_len);
+        if (H264_IS_KEYFRAME(nalu_type)) {
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)sps_, sps_len_);
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)pps_, pps_len_);
+        }
+        nalu_pkt_ptr->buffer_ptr_->AppendData((char*)data, data_len);
+        
+        WritePes(nalu_pkt_ptr);
+    }
+    
+    return 0;
+}
+
+int MpegtsMux::HandleH265(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->is_seq_hdr_) {
+        uint8_t* data   = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+        size_t data_len = pkt_ptr->buffer_ptr_->DataLen();
+        HEVC_DEC_CONF_RECORD hevc_info;
+
+        int ret = GetHevcDecInfoFromExtradata(&hevc_info, data, data_len);
+        if (ret == 0) {
+            GetVpsSpsPpsFromHevcDecInfo(&hevc_info,
+                    vps_, vps_len_,
+                    sps_, sps_len_,
+                    pps_, pps_len_);
+        }
+        return ret;
+    }
+
+    std::vector<std::shared_ptr<DataBuffer>> nalus;
+    bool ret = Avcc2Nalus((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
+            pkt_ptr->buffer_ptr_->DataLen(), nalus);
+    if (!ret) {
+        ReportEvent("error", "Avcc to Nalus error");
+        return -1;
+    }
+
+    Media_Packet_Ptr nalu_pkt_ptr = std::make_shared<Media_Packet>();
+    bool append_vps_pps_sps = false;
+
+    for (std::shared_ptr<DataBuffer> item : nalus) {
+        uint8_t* data = (uint8_t*)item->Data();
+        size_t data_len = (size_t)item->DataLen();
+
+        uint8_t nalu_type = GET_HEVC_NALU_TYPE(data[4]);
+        if (nalu_type == NAL_UNIT_ACCESS_UNIT_DELIMITER) {
+            continue;
+        }
+
+        nalu_pkt_ptr->copy_properties(pkt_ptr);
+        nalu_pkt_ptr->buffer_ptr_->Reset();
+
+        size_t aud_data_len = 0;
+        uint8_t* aud_data = GetH265AudData(aud_data_len);
+        nalu_pkt_ptr->buffer_ptr_->AppendData((char*)aud_data, aud_data_len);
+        if ((nalu_type >= NAL_UNIT_CODED_SLICE_BLA) && (nalu_type <= NAL_UNIT_RESERVED_23) && !append_vps_pps_sps) {
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)H265_START_CODE, sizeof(H265_START_CODE));
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)vps_, vps_len_);
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)H265_START_CODE, sizeof(H265_START_CODE));
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)sps_, sps_len_);
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)H265_START_CODE, sizeof(H265_START_CODE));
+            nalu_pkt_ptr->buffer_ptr_->AppendData((char*)pps_, pps_len_);
+            append_vps_pps_sps = true;
+        }
+        nalu_pkt_ptr->buffer_ptr_->AppendData((char*)H265_START_CODE, sizeof(H265_START_CODE));
+        nalu_pkt_ptr->buffer_ptr_->AppendData((char*)data + 4, data_len - 4);
+
+        WritePes(nalu_pkt_ptr);
+    }
+
+    return 0;
+}
+
+int MpegtsMux::HandleVpx(Media_Packet_Ptr pkt_ptr) {
+    return WritePes(pkt_ptr);
+}
+
+int MpegtsMux::HandleAudio(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->codec_type_ == MEDIA_CODEC_AAC) {
+        return HandleAudioAac(pkt_ptr);
+    } else if (pkt_ptr->codec_type_ == MEDIA_CODEC_OPUS) {
+        return HandleAudioOpus(pkt_ptr);
+    }
+    char error_sz[128];
+    snprintf(error_sz, sizeof(error_sz), "not support audio codec type:%s", codectype_tostring(pkt_ptr->codec_type_).c_str());
+    ReportEvent("error", error_sz);
+    return -1;
+}
+
+int MpegtsMux::HandleAudioAac(Media_Packet_Ptr pkt_ptr) {
+    if (pkt_ptr->is_seq_hdr_ && pkt_ptr->has_flv_audio_asc_) {
+        int sample_size = pkt_ptr->sample_size_;
+        audio_codec_type_ = pkt_ptr->codec_type_;
+        sample_rate_ = pkt_ptr->sample_rate_;
+        channel_     = pkt_ptr->channel_;
+
+        aac_type_ = pkt_ptr->aac_asc_type_;
+        LogInfof(logger_, "audio codec type:%s, aac type:%d, sample rate:%d, sample size:%d, channel:%d",
+            codectype_tostring(audio_codec_type_).c_str(), aac_type_, sample_rate_, sample_size, channel_);
+        return 0;
+    }
+
+    if ((aac_type_ == 0) || (sample_rate_ == 0) || (channel_ == 0)) {
+        LogErrorf(logger_, "audio config is not ready");
+        return 0;
+    }
+
+    uint8_t adts_data[32];
+    int adts_type = GetAdtsTypeByAscType(pkt_ptr->aac_asc_type_);
+    int adts_len = MakeAdts(adts_data, adts_type,
+            sample_rate_, channel_, pkt_ptr->buffer_ptr_->DataLen());
+    assert(adts_len == 7);
+
+    //LogInfof(logger_, "audio codec type:%s, aac asc type:%d, aac adts type:%d, sample rate:%d, channel:%d",
+    //        codectype_tostring(audio_codec_type_).c_str(), pkt_ptr->aac_asc_type_, adts_type, sample_rate_, channel_);
+    //LogInfoData(logger_, adts_data, adts_len, "adts header");
+    pkt_ptr->buffer_ptr_->ConsumeData(0 - adts_len);
+    uint8_t* p = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+    memcpy(p, adts_data, adts_len);
+
+    WritePes(pkt_ptr);
+    return 0;
+}
+
+int MpegtsMux::HandleAudioOpus(Media_Packet_Ptr pkt_ptr) {
+    return WritePes(pkt_ptr);
+}
+
+/*
+PAT:
+table_id 8 
+section_syntax_indicator 1 
+'0' 1 
+reserved 2
+section_length 12
+transport_stream_id 16
+reserved 2
+version_number 5
+current_next_indicator 1
+section_number 8
+last_section_number 8
+for (i = 0; i < N; i++) {
+program_number 16
+reserved 3
+if (program_number == '0') {
+network_PID 13
+}
+else {
+program_map_PID 13
+} }
+CRC_32 32
+*/
+int MpegtsMux::GeneratePat() {
+    uint32_t len = 0;
+
+    len = pmt_count_ * 4 + 5 + 4;//12bytes
+    uint8_t* p = pat_data_ + 5;
+
+    p[0] = PAT_TID_PAS;//shall be 0x00
+    p++;
+
+    // section_syntax_indicator = '1'
+    // '0'
+    // reserved '11'
+    ByteStream::Write2Bytes(p, (uint16_t)(0xb000 | len));
+    p += 2;
+
+    // transport_stream_id
+    ByteStream::Write2Bytes(p, transport_stream_id_);
+    p += 2;
+
+    // reserved '11'
+    // version_number 'xxxxx'
+    // current_next_indicator '1'
+    *p = 0xc1 | (pat_ver_ << 1);
+    p++;
+
+    // section_number/last_section_number
+    *p++ = 0;
+    *p++ = 0;
+
+    for(size_t i = 0; i < pmt_count_; i++)
+    {
+        ByteStream::Write2Bytes(p + i * 4 + 0, program_number_);
+        ByteStream::Write2Bytes(p + i * 4 + 2, (uint16_t)(0xE000 | pmt_pid_));
+    }
+    p += 4 * pmt_count_;
+
+    // crc32
+    uint32_t crc = mpeg_crc32(0xffffffff, pat_data_ + 6, len);
+    
+    ByteStream::Write4Bytes(p, crc);
+    p += 4;
+
+    memset(p, 0xff, pat_data_ + TS_PACKET_SIZE - p);
+    return (int)(p - pat_data_);
+}
+
+/*
+PMT:
+table_id 8 
+section_syntax_indicator 1 
+'0' 1 
+reserved 2
+section_length 12
+program_number 16
+reserved 2
+version_number 5
+current_next_indicator 1
+section_number 8
+last_section_number 8
+reserved 3
+PCR_PID 13
+reserved 4
+program_info_length 12
+for (i = 0; i < N; i++) {
+    descriptor() 
+}
+for (i = 0; i < N1; i++) { 
+    stream_type 8
+    reserved 3
+    elementary_PID 13
+    reserved 4
+    ES_info_length 12
+    for (i = 0; i < N2; i++) {
+        descriptor() 
+    }
+}
+CRC_32 32
+*/
+int MpegtsMux::GeneratePmt() {
+    uint8_t* data = pmt_data_ + 5;
+    uint8_t* p = data;
+
+    p[0] = PAT_TID_PMS;
+    p++;
+
+    // skip section_length
+    p += 2;
+
+    // program_number
+    ByteStream::Write2Bytes(p, pmt_pn);//0x00 01
+    p += 2;
+    
+    // reserved '11'
+    // version_number 'xxxxx'
+    // current_next_indicator '1'
+    *p++ = (uint8_t)(0xC1 | (pmt_ver_ << 1));
+
+    // section_number/last_section_number
+    *p++ = 0x00;
+    *p++ = 0x00;
+
+    // reserved '111'
+    // PCR_PID 13-bits 0x1FFF
+    ByteStream::Write2Bytes(p, (uint16_t)(0xE000 | pcr_id_));
+    p += 2;
+
+    //assert(pmt->pminfo_len < 0x400);
+    ByteStream::Write2Bytes(p, (uint16_t)(0xF000 | pminfo_len_));
+    p += 2;
+    
+    //TODO: set pminfo, there is no pm infor usually.
+
+    //video
+    if (has_video_) {
+        switch (video_codec_type_)
+        {
+            case MEDIA_CODEC_H264:
+            {
+                video_stream_type_ = STREAM_TYPE_VIDEO_H264;
+                break;
+            }
+            case MEDIA_CODEC_H265:
+            {
+                video_stream_type_ = STREAM_TYPE_VIDEO_HEVC;
+                break;
+            }
+            case MEDIA_CODEC_VP8:
+            case MEDIA_CODEC_VP9:
+            {
+                video_stream_type_ = STREAM_TYPE_PRIVATE_DATA;
+                break;
+            }
+            default:
+            {
+                video_stream_type_ = STREAM_TYPE_PRIVATE_DATA;
+            }
+        }
+
+        // stream_type
+        *p++ = video_stream_type_;
+
+        // reserved '111'
+        // elementary_PID 13-bits
+        ByteStream::Write2Bytes(p, 0xE000 | video_pid_);
+        p += 2;
+
+        // reserved '1111'
+        // ES_info_length 12-bits
+        uint8_t* es_info_length_p = p;
+        p += 2;
+
+        if (video_codec_type_ == MEDIA_CODEC_VP8) {
+            *p++ = 0x05; /* MPEG-2 registration descriptor*/
+            *p++ = 4;
+            *p++ = 'V';
+            *p++ = 'p';
+            *p++ = '8';
+            *p++ = '0';
+
+            *p++ = 0x7f; /* DVB extension descriptor */
+            *p++ = 2;
+            *p++ = 0x80;
+            *p++ = 2;// channels == 2
+        } else if (video_codec_type_ == MEDIA_CODEC_VP9) {
+            *p++ = 0x05; /* MPEG-2 registration descriptor*/
+            *p++ = 4;
+            *p++ = 'V';
+            *p++ = 'p';
+            *p++ = '9';
+            *p++ = '0';
+
+            *p++ = 0x7f; /* DVB extension descriptor */
+            *p++ = 2;
+            *p++ = 0x80;
+            *p++ = 2;// channels == 2
+        }
+        // reserved '1111'
+        // ES_info_length 12-bits
+        int val = 0xf000 | (p - es_info_length_p - 2);
+        es_info_length_p[0] = val >> 8;
+        es_info_length_p[1] = val;
+    }
+
+    //audio
+    if (has_audio_) {
+        switch (audio_codec_type_)
+        {
+            case MEDIA_CODEC_AAC:
+            {
+                audio_stream_type_ = STREAM_TYPE_AUDIO_AAC;
+                break;
+            }
+            case MEDIA_CODEC_OPUS:
+            {
+                audio_stream_type_ = STREAM_TYPE_PRIVATE_DATA;
+                break;
+            }
+            default:
+            {
+                audio_stream_type_ = STREAM_TYPE_PRIVATE_DATA;
+            }
+        }
+
+        // stream_type
+        *p++ = audio_stream_type_;
+
+        // reserved '111'
+        // elementary_PID 13-bits
+        ByteStream::Write2Bytes(p, 0xE000 | audio_pid_);
+        p += 2;
+
+        // reserved '1111'
+        // ES_info_length 12-bits
+        uint8_t* es_info_length_p = p;
+        p += 2;
+
+        if (audio_codec_type_ == MEDIA_CODEC_OPUS) {
+            *p++ = 0x05; /* MPEG-2 registration descriptor*/
+            *p++ = 4;
+            *p++ = 'O';
+            *p++ = 'p';
+            *p++ = 'u';
+            *p++ = 's';
+
+            *p++ = 0x7f; /* DVB extension descriptor */
+            *p++ = 2;
+            *p++ = 0x80;
+            *p++ = 2;// channels == 2
+        }
+        // reserved '1111'
+        // ES_info_length 12-bits
+        int val = 0xf000 | (p - es_info_length_p - 2);
+        es_info_length_p[0] = val >> 8;
+        es_info_length_p[1] = val;
+    }
+
+    uint16_t len = (uint16_t)(p + 4 - (data + 3)); // 4 bytes crc32
+
+    /*
+    section_syntax_indicator 1 
+    '0' 1 
+    reserved 2
+    section_length 12
+    */
+    //update section_length...
+    ByteStream::Write2Bytes(data + 1, (uint16_t)(0xb000 | len));
+
+    // crc32
+    uint32_t crc = mpeg_crc32(0xffffffff, data, (uint32_t)(p-data));
+    //put32(p, crc);
+    p[3] = (crc >> 24) & 0xFF;
+    p[2] = (crc >> 16) & 0xFF;
+    p[1] = (crc >> 8) & 0xFF;
+    p[0] = crc & 0xFF;
+    p += 4;
+
+    memset(p, 0xff, TS_PACKET_SIZE - (p - pmt_data_));
+    return (int)(p - pmt_data_);
+}
+
+int MpegtsMux::WritePesHeader(int64_t data_size,
+        bool is_video, int64_t dts, int64_t pts) {
+    uint8_t* p = pes_header_;
+    uint8_t pts_pts_flag = 0x80;//default enable pts
+    uint8_t ptsdts_header_len  = 5;
+    int64_t pes_packet_length = 0;
+
+    *p++ = 0x00;
+    *p++ = 0x00;
+    *p++ = 0x01;
+
+    if (is_video) {
+        *p++ = PES_SID_VIDEO +  video_sid_;
+    } else {
+        *p++ = PES_SID_AUDIO + audio_sid_;
+    }
+
+    if (is_video && (dts != pts)) {
+        pts_pts_flag |= 0x40;
+        ptsdts_header_len += 5;
+    }
+    pes_packet_length = data_size + ptsdts_header_len + 3;
+
+	if (pes_packet_length > 0xffff) {
+        pes_packet_length = 0;
+    }
+	*p++ = (uint8_t)(pes_packet_length >> 8) & 0xff;
+	*p++ = pes_packet_length & 0xff;
+	
+    // '10'
+	// PES_scrambling_control '00'
+	// PES_priority '0'
+	// data_alignment_indicator '0'
+	// copyright '0'
+	// original_or_copy '0'
+    *p++ = 0x80;
+
+    // PTS_DTS_flags:             2bits
+    // ESCR_flag:                 1bit
+    // ES_rate_flag:              1bit
+    // DSM_trick_mode_flag:       1bit
+    // additional_copy_info_flag: 1bit
+    // PES_CRC_flag:              1bit
+    // PES_extension_flag:        1bit
+    *p++ = pts_pts_flag;
+    *p++ = ptsdts_header_len;
+
+    WriteTs(p, pts_pts_flag >> 6, pts);
+    p += 5;
+    if (is_video && (pts != dts)) {
+        WriteTs(p, 0x01, dts);
+        p += 5;
+    }
+
+    pes_header_size_ = p - pes_header_;
+    return pes_header_size_;
+}
+
+int MpegtsMux::WritePcr(uint8_t* data, int64_t pcr) {
+    uint8_t* p = data;
+
+    *p++ = (uint8_t)(pcr >> 25);
+    *p++ = (uint8_t)((pcr >> 17) & 0xff);
+    *p++ = (uint8_t)((pcr >> 9) & 0xff);
+    *p++ = (uint8_t)((pcr >> 1) & 0xff);
+    *p++ = (uint8_t)(((pcr & 0x1) << 7) | 0x7e);
+    *p++ = 0x00;
+    return 0;
+}
+
+int MpegtsMux::WriteTs(uint8_t* data, uint8_t flag, int64_t ts) {
+    uint32_t val = 0;
+    uint8_t* p = data;
+
+    if (ts > 0x1ffffffff) {
+        ts -= 0x1ffffffff;
+    }
+
+    val = (uint32_t)(flag<<4) | (((uint32_t)(ts>>30) & 0x07) << 1) | 1;
+
+    *p++ = (uint8_t)(val);
+
+    val = ((uint32_t(ts>>15) & 0x7fff) << 1) | 1;
+    *p++ = (uint8_t)(val >> 8);
+    
+    *p++ = (uint8_t)(val);
+
+    val = ((uint32_t)(ts&0x7fff) << 1) | 1;
+    *p++ = (uint8_t)(val >> 8);
+
+    *p++ = (uint8_t)(val);
+    return 0;
+}
+
+int MpegtsMux::AdaptationBufInit(uint8_t* data, uint8_t data_size, uint8_t remain_bytes) {
+    data[0] = remain_bytes - 1;
+
+    if (remain_bytes != 1) {
+        data[1] = 0x00;
+        for (int i = 2; i < data_size; i++) {
+            data[i] = 0xff;
+        }
+    }
+    return 0;
+}
+
+int MpegtsMux::WritePes(Media_Packet_Ptr pkt_ptr) {
+    uint8_t* data = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+    int64_t data_size = pkt_ptr->buffer_ptr_->DataLen();
+    bool is_video = (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE);
+    bool is_keyframe = pkt_ptr->is_key_frame_;
+    int64_t dts = pkt_ptr->dts_ * 90;
+    int64_t pts = pkt_ptr->pts_ * 90;
+
+    const int TS_DEF_DATALEN = 184;
+    bool first = true;
+    uint8_t data_len = 0;
+    int64_t packet_bytes_len = 0;
+    uint16_t pid = audio_pid_;
+    uint8_t tmpLen = TS_PACKET_SIZE;
+    int wBytes = 0;
+
+    if (is_video) {
+        pid = video_pid_;
+    }
+
+    WritePesHeader(data_size, is_video, dts, pts);
+    
+    packet_bytes_len = data_size + pes_header_size_;
+
+    while (packet_bytes_len > 0) {
+        uint8_t ts_packet[TS_PACKET_SIZE];
+        int i = 0;
+
+        if (is_video) {
+            video_cc_++;
+            if (video_cc_ > 0xf) {
+                video_cc_ = 0;
+            }
+        } else {
+            audio_cc_++;
+            if (audio_cc_ > 0xf) {
+                audio_cc_ = 0;
+            }
+        }
+        //sync byte
+        ts_packet[i++] = 0x47;
+
+        //error indicator, unit start indicator,ts priority,pid
+        ts_packet[i] = (uint8_t)(pid >> 8); //pid high 5 bits
+        if (first) {
+            ts_packet[i] = ts_packet[i] | 0x40; //unit start indicator
+        }
+        i++;
+
+        //pid low 8 bits
+        ts_packet[i++] = pid;
+
+        //scram control, adaptation control, counter
+        if (is_video) {
+            ts_packet[i++] = 0x10 | (uint8_t)(video_cc_&0x0f);
+        } else {
+            ts_packet[i++] = 0x10 | (uint8_t)(audio_cc_&0x0f);
+        }
+
+        //video key frame need pcr
+        if (first && is_video && is_keyframe) {
+            ts_packet[3] |= 0x20;
+            ts_packet[i++] = 7;
+            
+            ts_packet[i++] = 0x50;
+
+            WritePcr(ts_packet + i, dts);
+            i += 6;
+        }
+
+        //frame data
+        if (packet_bytes_len >= TS_DEF_DATALEN) {
+            data_len = TS_DEF_DATALEN;
+            if (first) {
+                data_len -= (i - 4);
+            }
+        } else {
+            ts_packet[3] |= 0x20; //have adaptation
+            uint8_t remain_bytes = 0;
+            data_len = (uint8_t)(packet_bytes_len);
+            if (first) {
+                remain_bytes = TS_DEF_DATALEN - data_len - (i - 4);
+            } else {
+                remain_bytes = TS_DEF_DATALEN - data_len;
+            }
+            //muxer.adaptationBufInit(muxer.tsPacket[i:], byte(remainBytes))
+            AdaptationBufInit(ts_packet + i, TS_PACKET_SIZE - i, remain_bytes);
+            i += remain_bytes;
+        }
+
+        if (first && (i < TS_PACKET_SIZE)) {
+            tmpLen = TS_PACKET_SIZE - i;
+            if (pes_header_size_ <= tmpLen) {
+                tmpLen = pes_header_size_;
+            }
+            memcpy(ts_packet + i, pes_header_, tmpLen);
+            packet_bytes_len -= tmpLen;
+            i += tmpLen;
+            data_len -= tmpLen;
+        }
+
+        if (i < TS_PACKET_SIZE) {
+            tmpLen = TS_PACKET_SIZE - i;
+            if (tmpLen <= data_len) {
+                data_len = tmpLen;
+            }
+
+            memcpy(ts_packet + i, data + wBytes, data_len);
+
+            wBytes += data_len;
+            packet_bytes_len -= data_len;
+        }
+        TsOutput(pkt_ptr, ts_packet);
+        first = false;
+    }
+    return 0;
+}
+
+void MpegtsMux::TsOutput(Media_Packet_Ptr pkt_ptr, uint8_t* data) {
+    if (!sinkers_.empty()) {
+        for (auto& sinker : sinkers_) {
+            Media_Packet_Ptr ts_pkt_ptr = std::make_shared<Media_Packet>(256);
+            if (pkt_ptr.get() != nullptr) {
+                ts_pkt_ptr->copy_properties(pkt_ptr);
+            }
+            
+            ts_pkt_ptr->fmt_type_ = MEDIA_FORMAT_MPEGTS;
+            ts_pkt_ptr->buffer_ptr_->AppendData((char*)data, (size_t)TS_PACKET_SIZE);
+            sinker.second->SourceData(ts_pkt_ptr);
+        }
+    }
+    return;
+}
+
+}
