@@ -1,6 +1,6 @@
 # flv to mpegts开发示例
 ## 1. 简介
-cpp streamer是音视频组件，提供串流方式开发模式，可以理解成gstreamer的C++版本。
+cpp streamer是音视频组件，提供串流方式开发模式。
 
 
 flv文件转换成mpegts的实现，使用两个组件:

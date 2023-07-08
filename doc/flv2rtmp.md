@@ -1,6 +1,6 @@
 # 读取flv文件做rtmp推流开发示例
 ## 1. 简介
-cpp streamer是音视频组件，提供串流方式开发模式，可以理解成gstreamer的C++版本。
+cpp streamer是音视频组件，提供串流方式开发模式。
 
 
 读取flv文件做rtmp推流的实现，使用两个组件:
@@ -55,6 +55,7 @@ class Flv2RtmpPublishStreamerMgr : public CppStreamerInterface, public StreamerR
         flv_demux_streamer_ = CppStreamerFactory::MakeStreamer("flvdemux");//创建flvdemux的组件
         flv_demux_streamer_->SetLogger(logger_);//设置模块日志输出
         flv_demux_streamer_->SetReporter(this);//设置消息报告
+        flv_demux_streamer_->AddOption("re", "true");//设置flv的demux按照媒体流的时间戳来进行解析输出
         
         rtmppublish_streamer_ = CppStreamerFactory::MakeStreamer("rtmppublish");//创建rtmppublish组件
         rtmppublish_streamer_->SetLogger(logger_);//设置模块日志输出

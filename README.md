@@ -1,5 +1,5 @@
 # cpp_streamer
-cpp streamer是基于C++11开发的音视频组件，可以理解成C++版本gstreamer，使用者可以把组件串联起来实现自己的流媒体功能。
+cpp streamer是基于C++11开发的音视频组件，使用者可以把组件串联起来实现自己的流媒体功能。
 
 支持多种媒体格式，流媒体直播/rtc协议。
 
@@ -12,7 +12,7 @@ cpp streamer是基于C++11开发的音视频组件，可以理解成C++版本gst
 * mediasoup whip(mediaoup webrtc 性能压测)
 
 ## cpp streamer使用简介
-cpp streamer是音视频组件，提供串流方式开发模式，可以理解成gstreamer的C++版本。
+cpp streamer是音视频组件，提供串流方式开发模式。
 
 举例：flv文件转换成mpegts的实现，实现如下图
 
@@ -22,3 +22,12 @@ cpp streamer是音视频组件，提供串流方式开发模式，可以理解�
 * 使用flv demux组件：source接口导入文件二进制流，解析后，通过sinker接口输出视频+音频的媒体流；
 * 使用mpegts mux组件: source接口导入上游解析后的媒体流后，组件内部进行mpegts的封装，再通过sinker接口输出mpegts格式；
 * 通过mpegts mux组件的sinker接口组件输出，写文件得到mpegts文件；
+
+## cpp streamer应用实例
+
+* [flv转mpegts](doc/flv2mpegts.md)
+* [flv转rtmp推流](doc/flv2rtmp.md)
+* [mpegts转whip(webrtc http ingest protocol)，向srs webrtc服务推流](doc/mpegts2whip_srs.md)
+* [mpegts转whip bench压测，向srs webrtc服务推流压测](doc/mpegts2whip_srs_bench.md)
+* [mpegts转mediasoup broadcaster推流压测](doc/mpegts2mediasoup_push_bench.md)
+
