@@ -36,7 +36,7 @@ http 参数: app=live&stream=1000, 注意app和stream两个参数都是必须的
 * 输出的地址组要加引号。
 * mpegts文件，编码格式必须是：视频h264 baseline；音频opus 采样率48000，通道数为2；
 
-推荐生成ffmpeg命令行: 
+推荐生成mpegts源文件的ffmpeg命令行: 
 ```
 ffmpeg -i src.mp4 -c:v libx264 -r 25 -g 100 -profile baseline -c:a libopus -ar 48000 -ac 2 -ab 32k -f mpegts webrtc.ts
 ```

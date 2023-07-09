@@ -4,7 +4,7 @@ cpp streamer是音视频组件，提供串流方式开发模式。
 
 读取mpegts文件做mediasoup broadcaster推流的实现，使用两个组件:
 * mpegtsdemux组件
-* mspush组件
+* mspush组件: mediasoup push推流组件
 
 压测启动多个mspush组件实例，并发进行推流，并发模式采用libuv的单线程异步高并发模式。
 
@@ -39,12 +39,12 @@ http 参数: roomId=200&userId=1000, 注意roomId和userId两个参数都是必�
 * -n 为并发mediasoup broadcaster session个数
 * mpegts文件，编码格式必须是：视频h264 baseline；音频opus 采样率48000，通道数为2；
 
-推荐生成mpegts文件的ffmpeg命令行: 
+推荐生成mpegts源文件的ffmpeg命令行: 
 ```
 ffmpeg -i src.mp4 -c:v libx264 -r 25 -g 100 -profile baseline -c:a libopus -ar 48000 -ac 2 -ab 32k -f mpegts webrtc.ts
 ```
 
-### 1.3 mediasoup broadcaster缺陷与修改
+### 1.3 mediasoup服务端源码的缺陷与修改
 mediasoup broadcaster接口是对我提供https api做信令交换。
 
 但是其有前提：<b> 推流所在的roomId必须提前存在，否则broadcaster创建失败</b>

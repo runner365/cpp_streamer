@@ -14,7 +14,7 @@ flv文件转换成mpegts的实现，使用两个组件:
 * 先读取flv文件
 * 使用flvdemux组件：source接口导入文件二进制流，解析后，通过sinker接口输出视频+音频的媒体流；
 * 使用mpegtsmux组件: source接口导入上游解析后的媒体流后，组件内部进行mpegts的封装，再通过sinker接口输出mpegts格式；
-* 通过mpegts mux组件的sinker接口组件输出，写文件得到mpegts文件；
+* 通过mpegtsmux组件的sinker接口组件输出，写文件得到mpegts文件；
 
 ## 2. 代码开发实现
 代码实现在: src/tools/flv2rtmppublish_streamer.cpp

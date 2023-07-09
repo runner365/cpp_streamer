@@ -95,8 +95,8 @@ private:
 int main(int argn, char** argv) {
     //uint16_t port = 6969;
     uint16_t port = 4443;
-    //std::string hostip = "127.0.0.1";
-    std::string hostip = "alihb01.cerceimedia.kuaishou.com";
+    std::string hostip = "127.0.0.1";
+
     uv_loop_t* loop = uv_default_loop();
     std::stringstream ss;
 
