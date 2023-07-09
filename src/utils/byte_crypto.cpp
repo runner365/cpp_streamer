@@ -46,10 +46,14 @@ const uint32_t ByteCrypto::crc32_table[] =
     0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
+
 std::default_random_engine ByteCrypto::random;
 bool ByteCrypto::init_ = false;
+std::mutex ByteCrypto::mutex_;
 
 void ByteCrypto::Init() {
+    std::unique_lock<std::mutex> lck(mutex_);
+
     if (init_) {
         return;
     }
@@ -67,6 +71,8 @@ void ByteCrypto::Init() {
 }
 
 void ByteCrypto::DeInit() {
+    std::unique_lock<std::mutex> lck(mutex_);
+
     if (!init_) {
         return;
     }
@@ -79,12 +85,14 @@ void ByteCrypto::DeInit() {
 }
 
 uint32_t ByteCrypto::GetRandomUint(uint32_t min, uint32_t max) {
+    std::unique_lock<std::mutex> lck(mutex_);
     std::uniform_int_distribution<uint32_t> dest(min, max);
 
     return dest(random);
 }
 
 uint32_t ByteCrypto::GetCrc32(const uint8_t* data, size_t size) {
+    std::unique_lock<std::mutex> lck(mutex_);
     uint32_t crc{ 0xFFFFFFFF };
     const uint8_t* p = data;
 
@@ -96,6 +104,7 @@ uint32_t ByteCrypto::GetCrc32(const uint8_t* data, size_t size) {
 }
 
 uint8_t* ByteCrypto::GetHmacSha1(const std::string& key, const uint8_t* data, size_t len) {
+    std::unique_lock<std::mutex> lck(mutex_);
     int ret = 0;
 
     ret = HMAC_Init_ex(ByteCrypto::hmac_sha1_ctx, key.c_str(), key.length(), EVP_sha1(), nullptr);

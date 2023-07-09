@@ -6,6 +6,7 @@
 #include <random>
 #include <openssl/hmac.h>
 #include <openssl/ssl.h>
+#include <mutex>
 
 namespace cpp_streamer
 {
@@ -21,7 +22,7 @@ public:
     static uint8_t* GetHmacSha1(const std::string& key, const uint8_t* data, size_t len);
     static std::string GetRandomString(size_t len);
 
-public:
+private:
     static std::default_random_engine random;
     static HMAC_CTX* hmac_sha1_ctx;
     static uint8_t hmac_sha1_buffer[20];
@@ -29,6 +30,7 @@ public:
 
 private:
     static bool init_;
+    static std::mutex mutex_;
 };
 
 }
