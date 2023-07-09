@@ -18,8 +18,10 @@
 using namespace cpp_streamer;
 
 static Logger* s_logger = nullptr;
-static const int BENCH_MAX = 100;
+static const int BENCH_MAX = 1000;
 static const size_t WHIPS_INTERVAL = 10;
+
+static size_t done_count = 0;
 
 void CloseCallback(uv_async_t *handle);
 
@@ -29,17 +31,21 @@ public:
     Mpegts2Whips(uv_loop_t* loop,
             const std::string& src_ts, 
             const std::string& output_url,
+            size_t stream_index,
             size_t bench_count):TimerInterface(loop, 500)
                             , src_ts_(src_ts)
                             , base_url_(output_url)
+                            , whip_index_(stream_index)
                             , bench_count_(bench_count)
     {
     }
     virtual ~Mpegts2Whips()
     {
         StopTimer();
-        thread_ptr_->join();
-        thread_ptr_ = nullptr;
+        worker_thread_ptr_->join();
+        worker_thread_ptr_ = nullptr;
+        uv_thread_ptr_->join();
+        uv_thread_ptr_ = nullptr;
     }
 
 //TimerInterface
@@ -61,22 +67,12 @@ public:
         uv_async_init(loop_, &async_, CloseCallback);
 
         tsdemux_streamer_ = CppStreamerFactory::MakeStreamer("mpegtsdemux");
-        if (!tsdemux_streamer_) {
-            LogErrorf(logger_, "make streamer mpegtsdemux error");
-            return -1;
-        }
-        LogInfof(logger_, "make mpegts demux streamer:%p, name:%s", 
-                tsdemux_streamer_, tsdemux_streamer_->StreamerName().c_str());
         tsdemux_streamer_->SetLogger(logger_);
         tsdemux_streamer_->AddOption("re", "true");
         tsdemux_streamer_->SetReporter(this);
 
         for (size_t i = 0; i < bench_count_; i++) {
             CppStreamerInterface* whip_streamer = CppStreamerFactory::MakeStreamer("whip");
-            if (!whip_streamer) {
-                LogErrorf(logger_, "make streamer whip error");
-                return -1;
-            }
             whip_streamer->SetLogger(logger_);
             whip_streamer->SetReporter(this);
             tsdemux_streamer_->AddSinker(whip_streamer);
@@ -115,16 +111,24 @@ public:
     }
 
     void Start() {
-        if (!thread_ptr_) {
-            thread_ptr_ = std::make_shared<std::thread>(&Mpegts2Whips::OnWork, this);
+        running_ = true;
+
+        if (!worker_thread_ptr_) {
+            worker_thread_ptr_ = std::make_shared<std::thread>(&Mpegts2Whips::OnWork, this);
+        }
+
+        if (!uv_thread_ptr_) {
+            uv_thread_ptr_ = std::make_shared<std::thread>(&Mpegts2Whips::OnUvWork, this);
         }
         StartTimer();
     }
 
     void Stop() {
+        running_ = false;
         Clean();
         LogInfof(logger_, "job is done.");
-        exit(0);
+
+        done_count++;
     }
 
     void SetLogger(Logger* logger) {
@@ -132,6 +136,12 @@ public:
     }
 
 private:
+    void OnUvWork() {
+        while (running_) {
+            uv_run(loop_, UV_RUN_DEFAULT);
+        }
+    }
+
     int GetWhipIndex(const std::string& name) {
         int index = -1;
         for (CppStreamerInterface* whip : whips_) {
@@ -248,12 +258,14 @@ protected:
 private:
     std::string src_ts_;
     std::string base_url_;
+    size_t whip_index_ = 0;
     size_t bench_count_ = 1;
+    bool running_ = false;
     uv_loop_t* loop_ = nullptr;
     uv_async_t async_;
-    std::shared_ptr<std::thread> thread_ptr_;
+    std::shared_ptr<std::thread> worker_thread_ptr_;
+    std::shared_ptr<std::thread> uv_thread_ptr_;
     size_t whip_ready_count_ = 0;
-    size_t whip_index_ = 0;
     bool post_done_ = false;
 
 private:
@@ -330,24 +342,43 @@ int main(int argc, char** argv) {
 
     LogInfof(s_logger, "mpegts2whip bench is starting, input mpegts:%s, output whip bash url:%s, bench count:%d",
             input_ts_name, output_url_name, bench_count);
-    uv_loop_t* loop = uv_default_loop();
- 
-    std::shared_ptr<Mpegts2Whips> mgr_ptr = std::make_shared<Mpegts2Whips>(loop, 
-            input_ts_name, 
-            output_url_name, 
-            (size_t)bench_count);
+    size_t group_count = bench_count / 100 + (bench_count % 100 == 0) ? 0 : 1;
+    std::vector<std::shared_ptr<Mpegts2Whips>> mgr_vec;
 
-    mgr_ptr->SetLogger(s_logger);
+    for (size_t i = 0; i < group_count; i++) {
+        size_t base_index = i * 100;
+        size_t count = (i != (group_count - 1)) ? 100 : (bench_count % 100);
+        uv_loop_t *loop = (uv_loop_t*)malloc(sizeof(uv_loop_t));
+        uv_loop_init(loop); 
 
-    if (mgr_ptr->MakeStreamers(loop) < 0) {
-        LogErrorf(s_logger, "call mpegts to whip bench error");
-        return -1;
+        std::shared_ptr<Mpegts2Whips> mgr_ptr = std::make_shared<Mpegts2Whips>(loop, 
+                input_ts_name, 
+                output_url_name, 
+                base_index,
+                count);
+        mgr_ptr->SetLogger(s_logger);
+
+        if (mgr_ptr->MakeStreamers(loop) < 0) {
+            LogErrorf(s_logger, "call mpegts to whip bench error");
+            return -1;
+        }
+
+        mgr_vec.push_back(mgr_ptr);
     }
-    LogInfof(s_logger, "mpegts to whip bench is starting......");
-    mgr_ptr->Start();
-    while (true) {
-        uv_run(loop, UV_RUN_DEFAULT);
+
+    int index = 0;
+    for (auto mgr_ptr : mgr_vec) {
+        LogInfof(s_logger, "mpegts to whip bench is starting index:%d", index++);
+        mgr_ptr->Start();
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
     }
+
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    } while(done_count < group_count);
+
+    std::cout << "group count:" << group_count << " are all done.\r\n";
+
     return 0;
 }
 
