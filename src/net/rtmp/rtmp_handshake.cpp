@@ -703,9 +703,9 @@ int rtmp_server_handshake::send_s0s1s2() {
 
 size_t RtmpClientHandshake::s0s1s2_size = 1536*2+1;
 
-RtmpClientHandshake::RtmpClientHandshake(RtmpClientSession* session, Logger* logger):session_(session)
-                                                                                     , logger_(logger)
-                                                                                     , c1s1_obj_(logger)
+RtmpClientHandshake::RtmpClientHandshake(RtmpClientSession* session, Logger* logger):logger_(logger)
+            , session_(session)
+            , c1s1_obj_(logger)
 {
 
 }

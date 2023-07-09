@@ -209,8 +209,8 @@ static long openssl_dtls_bio_out_callback_ex(BIO *b, int oper, const char *argp,
     return retvalue;
 }
 
-RtcDtls::RtcDtls(PeerConnection* pc, Logger* logger):pc_(pc),
-    logger_(logger)
+RtcDtls::RtcDtls(PeerConnection* pc, Logger* logger):logger_(logger),
+    pc_(pc)
 {
     for (auto& item : srtp_crypto_suite_vec) {
         if (!srtp_ciphers_.empty()) {
