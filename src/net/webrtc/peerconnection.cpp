@@ -558,6 +558,9 @@ void PeerConnection::OnWrite(size_t sent_size, UdpTuple address) {
 }
 
 void PeerConnection::OnRead(const char* data, size_t data_size, UdpTuple address) {
+    if (!udp_client_) {
+        return;
+    }
     if (StunPacket::IsStun((uint8_t*)data, data_size)) {
         try {
             StunPacket* pkt = StunPacket::Parse((uint8_t*)data, data_size);

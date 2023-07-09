@@ -36,6 +36,7 @@ public:
                             , src_ts_(src_ts)
                             , base_url_(output_url)
                             , whip_index_(stream_index)
+                            , base_index_(stream_index)
                             , bench_count_(bench_count)
     {
     }
@@ -89,23 +90,24 @@ public:
             return;
         }
 
-        LogWarnf(logger_, "StartWhips whip index:%lu",
-                whip_index_);
+        LogWarnf(logger_, "StartWhips whip index:%lu, bench_count:%lu",
+                whip_index_, bench_count_);
         size_t i = 0;
         for (i = whip_index_; i < whip_index_ + WHIPS_INTERVAL;i++) {
-            if (i >= bench_count_) {
+            if (i >= base_index_ + bench_count_) {
                 break;
             }
             std::string url = GetUrl(i);
             LogWarnf(logger_, "start network url:%s", url.c_str());
             try {
-                whips_[i]->StartNetwork(url, loop_);
+                size_t index = i - base_index_;
+                whips_[index]->StartNetwork(url, loop_);
             } catch(CppStreamException& e) {
                 LogErrorf(logger_, "whip start network exception:%s", e.what());
             }
         }
         whip_index_ = i;
-        if (whip_index_ >= bench_count_) {
+        if (whip_index_ >= base_index_ + bench_count_) {
             post_done_ = true;
         }
     }
@@ -160,8 +162,10 @@ protected:
     virtual void OnReport(const std::string& name,
             const std::string& type,
             const std::string& value) override {
-        LogWarnf(logger_, "report name:%s, type:%s, value:%s",
-                name.c_str(), type.c_str(), value.c_str());
+        if ((log_count_++ % 4) == 0) {
+            LogWarnf(logger_, "report name:%s, type:%s, value:%s",
+                    name.c_str(), type.c_str(), value.c_str());
+        }
         if (type == "dtls") {
             if (value == "ready") {
                 int index = GetWhipIndex(name);
@@ -201,7 +205,7 @@ protected:
                 whips_[i] = nullptr;
             }
         }
-        uv_loop_close(loop_);
+        //uv_loop_close(loop_);
     }
 
     void AsyncClose() {
@@ -259,6 +263,7 @@ private:
     std::string src_ts_;
     std::string base_url_;
     size_t whip_index_ = 0;
+    size_t base_index_ = 0;
     size_t bench_count_ = 1;
     bool running_ = false;
     uv_loop_t* loop_ = nullptr;
@@ -272,6 +277,9 @@ private:
     Logger* logger_ = nullptr;
     std::vector<CppStreamerInterface*> whips_;
     CppStreamerInterface* tsdemux_streamer_    = nullptr;
+
+private:
+    int64_t log_count_ = 0;
 };
 
 void CloseCallback(uv_async_t *handle) {
@@ -342,8 +350,16 @@ int main(int argc, char** argv) {
 
     LogInfof(s_logger, "mpegts2whip bench is starting, input mpegts:%s, output whip bash url:%s, bench count:%d",
             input_ts_name, output_url_name, bench_count);
-    size_t group_count = bench_count / 100 + (bench_count % 100 == 0) ? 0 : 1;
+    size_t group_count = bench_count / 100;
+    group_count += (bench_count % 100 == 0) ? 0 : 1;
+
+    std::cout << "bench_count/100:" << bench_count/100 << "\r\n";
+    std::cout << "bench_count%100:" << bench_count%100 << "\r\n";
+
     std::vector<std::shared_ptr<Mpegts2Whips>> mgr_vec;
+
+    std::cout << "group count:" << group_count << "\r\n";
+    std::cout << "bench count:" << bench_count << "\r\n";
 
     for (size_t i = 0; i < group_count; i++) {
         size_t base_index = i * 100;
@@ -366,6 +382,8 @@ int main(int argc, char** argv) {
         mgr_vec.push_back(mgr_ptr);
     }
 
+    LogWarnf(s_logger, "webrtc streamer manager vector size:%lu", mgr_vec.size());
+
     int index = 0;
     for (auto mgr_ptr : mgr_vec) {
         LogInfof(s_logger, "mpegts to whip bench is starting index:%d", index++);
@@ -379,6 +397,7 @@ int main(int argc, char** argv) {
 
     std::cout << "group count:" << group_count << " are all done.\r\n";
 
+    exit(0);
     return 0;
 }
 
