@@ -327,11 +327,10 @@ int SdpTransform::ParseSsrcInfo(const std::string& line) {
         std::string cname = ssrc_string.substr(cname_attr.length() + 1);
         auto iter = ssrc_info_map_.find(ssrc);
         if (iter == ssrc_info_map_.end()) {
-            SSRCInfo info = {
-                .ssrc = ssrc,
-                .is_video = current_is_video_,
-                .cname = cname
-            };
+            SSRCInfo info;
+            info.ssrc = ssrc;
+            info.is_video = current_is_video_;
+            info.cname = cname;
             ssrc_info_map_[ssrc] = info;
             return 0;
         }
@@ -354,12 +353,11 @@ int SdpTransform::ParseSsrcInfo(const std::string& line) {
 
         auto iter = ssrc_info_map_.find(ssrc);
         if (iter == ssrc_info_map_.end()) {
-            SSRCInfo info = {
-                .ssrc = ssrc,
-                .is_video = current_is_video_,
-                .msid = msid,
-                .msid_appdata = msid_appdata
-            };
+            SSRCInfo info;
+            info.ssrc = ssrc;
+            info.is_video = current_is_video_;
+            info.msid = msid;
+            info.msid_appdata = msid_appdata;
             ssrc_info_map_[ssrc] = info;
             return 0;
         }
