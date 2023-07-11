@@ -6,6 +6,7 @@
 #include "udp_client.hpp"
 #include "srtp_session.hpp"
 #include "rtc_send_stream.hpp"
+#include "rtc_recv_stream.hpp"
 #include "timer.hpp"
 #include "rtcp_xr_dlrr.hpp"
 
@@ -32,7 +33,9 @@ public:
     virtual void OnState(const std::string& type, const std::string& value) = 0;
 };
 
-class PeerConnection : public UdpSessionCallbackI, public RtcStreamCallbackI, public TimerInterface
+class PeerConnection : public UdpSessionCallbackI
+    , public RtcSendStreamCallbackI
+    , public TimerInterface
 {
 public:
     PeerConnection(uv_loop_t* loop, Logger* logger, PCStateReportI* state_report);
@@ -102,8 +105,12 @@ private:
 
 private:
     void CreateSendStream();
+    void CreateRecvStream();
     void OnStatics(int64_t now_ms);
- 
+
+private:
+    void HandleRtpData(uint8_t* data, size_t len);
+
 private:
     void HandleRtcp(uint8_t* data, size_t len);
     int HandleRtcpSr(uint8_t* data, int len);
@@ -117,6 +124,7 @@ private:
     void SendXrDlrr(int64_t now_ms);
 
 private:
+    uv_loop_t* loop_ = nullptr;
     Logger* logger_ = nullptr;
     PCStateReportI* state_report_   = nullptr;
     WebRtcSdpDirection direct_type_ = DIRECTION_UNKNOWN;
@@ -138,6 +146,10 @@ private:
     bool has_rtx_ = false;
     RtcSendStream* video_send_stream_ = nullptr;
     RtcSendStream* audio_send_stream_ = nullptr;
+
+private:
+    RtcRecvStream* video_recv_stream_ = nullptr;
+    RtcRecvStream* audio_recv_stream_ = nullptr;
 
 private:
     NTP_TIMESTAMP last_xr_ntp_;

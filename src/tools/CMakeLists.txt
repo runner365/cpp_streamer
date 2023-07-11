@@ -164,6 +164,18 @@ ELSEIF (UNIX)
 target_link_libraries(mediasoup_push_bench rt dl z m srtp2 ssl crypto pthread uv)
 ENDIF ()
 
+###############################################################
+# example: whep srs demo
+add_executable(whep_srs_demo
+            ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/whep_srs_demo.cpp)
+add_dependencies(whep_srs_demo whep openssl libsrtp)
+
+IF (APPLE)
+target_link_libraries(whep_srs_demo dl z m srtp2 ssl crypto pthread uv)
+ELSEIF (UNIX)
+target_link_libraries(whep_srs_demo rt dl z m srtp2 ssl crypto pthread uv)
+ENDIF ()
 
 ################################################################
 # example: udp client demo

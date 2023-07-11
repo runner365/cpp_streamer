@@ -318,6 +318,10 @@ int SdpTransform::ParseSsrcInfo(const std::string& line) {
     std::string ssrc_string = line.substr(ssrc_attr.length() + 1);
 
     size_t pos = ssrc_string.find(" ");
+    if (pos == std::string::npos) {
+        LogErrorf(logger_, "parse ssrc info error:%s", line.c_str());
+        return -1;
+    }
     uint32_t ssrc = (uint32_t)atoi(ssrc_string.substr(0, pos).c_str());
 
     ssrc_string = ssrc_string.substr(pos + 1);
@@ -503,7 +507,7 @@ int SdpTransform::ParseLine(std::string line) {
     //a=ssrc:1279799722 msid:7d3a1915-764a-43d3-be25-41a12def895a fc115548-c635-4565-85c7-84c3443ea453
     pos = line.find(ssrc_attr);
     if (pos == 0) {
-        return ParseSsrcInfo(ssrc_attr);
+        return ParseSsrcInfo(line);
     }
 
     pos = line.find(candidate_attr);
@@ -937,6 +941,16 @@ int SdpTransform::GetVideoPayloadType() {
             return item.payload_type;
         }
     }
+
+    for (auto& item : video_rtp_map_infos_) {
+        std::string codec_type = item.second.codec_type;
+        String2Lower(codec_type);
+        if (codec_type == "h264" || codec_type == "vp8"
+            || codec_type == "vp9") {
+            return item.second.payload_type;
+        }
+    }
+ 
     return -1;
 }
 
@@ -950,11 +964,18 @@ int SdpTransform::GetVideoRtxPayloadType() {
 }
 
 int SdpTransform::GetAudioPayloadType() {
-    LogInfof(logger_, "audio fmtp vec size:%lu", audio_fmtp_vec_.size());
     for (auto& item : audio_fmtp_vec_) {
         LogInfof(logger_, "audio fmtp item payload_type:%d, is video:%d", item.payload_type, item.is_video);
         if (!item.is_video) {
             return item.payload_type;
+        }
+    }
+
+    for (auto& item : audio_rtp_map_infos_) {
+        std::string codec_type = item.second.codec_type;
+        String2Lower(codec_type);
+        if (codec_type == "opus") {
+            return item.second.payload_type;
         }
     }
     return -1;

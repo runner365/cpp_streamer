@@ -13,7 +13,6 @@
 #include <thread>
 #include <memory>
 
-
 using namespace cpp_streamer;
 
 static Logger* s_logger = nullptr;

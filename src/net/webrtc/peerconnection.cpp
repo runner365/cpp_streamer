@@ -17,6 +17,7 @@ namespace cpp_streamer
 {
 PeerConnection::PeerConnection(uv_loop_t* loop, 
         Logger* logger, PCStateReportI* state_report):TimerInterface(loop, 300)
+                                                      , loop_(loop)
                                                       , logger_(logger)
                                                       , state_report_(state_report)
                                                       , dtls_(this, logger)
@@ -97,6 +98,9 @@ int PeerConnection::ParseAnswerSdp(const std::string& sdp) {
             answer_sdp_.GetVideoRtxClockRate(),
             answer_sdp_.GetAudioClockRate());
  
+    LogInfof(logger_, "video nack:%s, audio nack:%s",
+            answer_sdp_.IsVideoNackEnable() ? "true" : "false",
+            answer_sdp_.IsAudioNackEnable() ? "true" : "false");
     if (pc_state_ >= PC_SDP_DONE_STATE) {
         LogWarnf(logger_, "ParseAnswerSdp error:  peer connection state is %d", pc_state_);
         return 0;
@@ -586,8 +590,7 @@ void PeerConnection::OnRead(const char* data, size_t data_size, UdpTuple address
     } else if (IsRtcp((uint8_t*)data, data_size)) {
         HandleRtcp((uint8_t*)data, data_size);
     } else if (IsRtp((uint8_t*)data, data_size)) {
-        LogInfof(logger_, "receive rtp packet:%s, len:%lu",
-                RtpHeaderDump((RtpCommonHeader*)data).c_str(), data_size);
+        HandleRtpData((uint8_t*)data, data_size);
     } else if (RtcDtls::IsDtls((uint8_t*)data, data_size)) {
        uint8_t dtls_data[8*1024];
        int dtls_len = (int)data_size;
@@ -602,6 +605,41 @@ void PeerConnection::OnRead(const char* data, size_t data_size, UdpTuple address
 
     udp_client_->TryRead();
     return;
+}
+
+void PeerConnection::HandleRtpData(uint8_t* data, size_t len) {
+    if (pc_state_ < PC_DTLS_DONE_STATE) {
+        return;
+    }
+    try {
+        if (!read_srtp_) {
+            LogErrorf(logger_, "read srtp session is not ready and discard rtp packet");
+            return;
+        }
+
+        bool ret = read_srtp_->DecryptSrtp(const_cast<uint8_t*>(data), &len);
+        if (!ret) {
+            LogErrorf(logger_, "decrypt srtp error");
+            return;
+        }
+
+        RtpPacket* pkt = RtpPacket::Parse(data, len);
+        if (!pkt) {
+            return;
+        }
+        uint32_t ssrc = pkt->GetSsrc();
+        if (ssrc == video_recv_stream_->GetSsrc()) {
+            video_recv_stream_->HandleRtpPacket(pkt);
+            return;
+        } else if (ssrc == audio_recv_stream_->GetSsrc()) {
+            audio_recv_stream_->HandleRtpPacket(pkt);
+            return;
+        } else {
+            LogErrorf(logger_, "fail to find ssrc:%u", ssrc);
+        }
+    } catch(CppStreamException& e) {
+        LogErrorf(logger_, "handle rtp data exception:%s", e.what());
+    }
 }
 
 void PeerConnection::Report(const std::string& type, const std::string& value) {
@@ -637,7 +675,13 @@ void PeerConnection::OnDtlsConnected(CRYPTO_SUITE_ENUM suite,
         write_srtp_ = new SRtpSession(SRTP_SESSION_OUT_TYPE, suite, local_key, local_key_len);
         read_srtp_  = new SRtpSession(SRTP_SESSION_IN_TYPE, suite, remote_key, remote_key_len);
 
-        CreateSendStream();
+        if (direct_type_ == SEND_ONLY) {
+            CreateSendStream();
+        } else if (direct_type_ == RECV_ONLY) {
+            CreateRecvStream();
+        } else {
+            LogErrorf(logger_, "peer connection direction type error:%d", direct_type_);
+        }
     } catch(CppStreamException& e) {
         LogErrorf(logger_, "create srtp session error:%s", e.what());
     }
@@ -670,6 +714,46 @@ void PeerConnection::SendRtcpPacket(uint8_t* data, size_t len) {
     }
     udp_client_->Write((char*)data, len, dtls_.remote_address_);
     udp_client_->TryRead();
+}
+
+void PeerConnection::CreateRecvStream() {
+    bool video_nack = answer_sdp_.IsVideoNackEnable();
+    bool audio_nack = answer_sdp_.IsAudioNackEnable();
+
+    LogInfof(logger_, "create recv stream video ssrc:%u, audio ssrc:%u",
+            answer_sdp_.GetVideoSsrc(), answer_sdp_.GetAudioSsrc());
+    if (answer_sdp_.GetVideoSsrc() > 0) {
+        has_rtx_ = answer_sdp_.IsVideoRtxEnable();
+        uint32_t rtx_ssrc    = answer_sdp_.GetVideoRtxSsrc();
+        uint8_t rtx_payload  = answer_sdp_.GetVideoRtxPayloadType();
+        if (has_rtx_ && (rtx_payload > 0) && (rtx_ssrc > 0)) {
+            video_recv_stream_ = new RtcRecvStream(MEDIA_VIDEO_TYPE, 
+                answer_sdp_.GetVideoSsrc(),
+                answer_sdp_.GetVideoPayloadType(),
+                answer_sdp_.GetVideoClockRate(),
+                video_nack, rtx_payload, rtx_ssrc,
+                logger_, loop_);
+           
+        } else {
+                video_recv_stream_ = new RtcRecvStream(MEDIA_VIDEO_TYPE, 
+                answer_sdp_.GetVideoSsrc(),
+                answer_sdp_.GetVideoPayloadType(),
+                answer_sdp_.GetVideoClockRate(),
+                video_nack, logger_, loop_);
+        }
+    }
+
+    if (answer_sdp_.GetAudioSsrc() > 0) {
+        audio_recv_stream_ = new RtcRecvStream(MEDIA_AUDIO_TYPE, 
+                answer_sdp_.GetAudioSsrc(),
+                answer_sdp_.GetAudioPayloadType(),
+                answer_sdp_.GetAudioClockRate(),
+                audio_nack, logger_, loop_);
+        audio_recv_stream_->SetChannel(answer_sdp_.channel_);
+    }
+
+    return;
+
 }
 
 void PeerConnection::CreateSendStream() {
@@ -1068,5 +1152,6 @@ std::string PeerConnection::GetVideoCName() {
 std::string PeerConnection::GetAudioCName() {
     return offer_sdp_.audio_cname_;
 }
+
 
 }

@@ -174,5 +174,31 @@ ELSEIF (UNIX)
 target_link_libraries(mspush pthread rt dl z m srtp2 ssl crypto uv)
 ENDIF ()
 
+################################################################
+## whep streamer module
+add_library(whep SHARED
+            ./src/net/webrtc/whep.cpp
+            ./src/net/webrtc/peerconnection.cpp
+            ./src/net/webrtc/srtp_session.cpp
+            ./src/net/webrtc/dtls.cpp
+            ./src/net/webrtc/rtc_send_stream.cpp
+            ./src/net/webrtc/rtc_recv_stream.cpp
+            ./src/net/webrtc/jitterbuffer.cpp
+            ./src/net/webrtc/nack_generator.cpp
+            ./src/net/http/http_client.cpp
+            ./src/net/rtprtcp/rtp_packet.cpp
+            ./src/net/rtprtcp/rtp_h264_pack.cpp
+            ./src/format/sdp/sdp.cpp
+            ./src/format/opus_header.cpp
+            ./src/net/stun/stun.cpp
+            ./src/utils/byte_crypto.cpp)
+
+add_dependencies(whep openssl libsrtp)
+
+IF (APPLE)
+target_link_libraries(whep pthread dl z m srtp2 ssl crypto uv)
+ELSEIF (UNIX)
+target_link_libraries(whep pthread rt dl z m srtp2 ssl crypto uv)
+ENDIF ()
 
 add_subdirectory(src/tools)

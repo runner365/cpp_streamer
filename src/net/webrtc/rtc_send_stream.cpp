@@ -13,7 +13,7 @@ namespace cpp_streamer
 RtcSendStream::RtcSendStream(MEDIA_PKT_TYPE type, 
             uint32_t ssrc, uint8_t payload, 
             int clock_rate, bool nack, 
-            RtcStreamCallbackI* cb, Logger* logger):logger_(logger)
+            RtcSendStreamCallbackI* cb, Logger* logger):logger_(logger)
                         , media_type_(type)
                         , cb_(cb)
 {
@@ -43,7 +43,7 @@ RtcSendStream::RtcSendStream(MEDIA_PKT_TYPE type,
 RtcSendStream::RtcSendStream(MEDIA_PKT_TYPE type, 
             uint32_t ssrc, uint8_t payload, int clock_rate,
             bool nack, uint8_t rtx_payload, uint32_t rtx_ssrc,
-            RtcStreamCallbackI* cb, Logger* logger):logger_(logger)
+            RtcSendStreamCallbackI* cb, Logger* logger):logger_(logger)
                                                     , media_type_(type)
                                                     , cb_(cb)
 {

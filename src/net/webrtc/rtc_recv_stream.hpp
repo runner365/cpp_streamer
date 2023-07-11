@@ -1,39 +1,35 @@
-#ifndef RTC_SEND_STREAM_HPP
-#define RTC_SEND_STREAM_HPP
+#ifndef RTC_RECV_STREAM_HPP
+#define RTC_RECV_STREAM_HPP
 #include "av.hpp"
 #include "logger.hpp"
 #include "media_packet.hpp"
 #include "rtp_packet.hpp"
-#include "rtcp_sr.hpp"
 #include "rtcp_rr.hpp"
+#include "rtcp_sr.hpp"
 #include "rtcpfb_nack.hpp"
 #include "rtcp_xr_dlrr.hpp"
+#include "rtcp_xr_rrt.hpp"
 #include "rtc_stream_pub.hpp"
 #include "stream_statics.hpp"
+#include "nack_generator.hpp"
 
 #include <vector>
 
 namespace cpp_streamer
 {
 
-typedef struct {
-    int retry_count;
-    int64_t last_ms;
-    RtpPacket* pkt;
-} RtpPacketInfo;
-
-class RtcSendStream
+class RtcRecvStream : public NackGeneratorCallbackI
 {
 public:
-    RtcSendStream(MEDIA_PKT_TYPE type, 
+    RtcRecvStream(MEDIA_PKT_TYPE type, 
             uint32_t ssrc, uint8_t payload, 
             int clock_rate, bool nack, 
-            RtcSendStreamCallbackI* cb, Logger* logger);
-    RtcSendStream(MEDIA_PKT_TYPE type, 
+            Logger* logger, uv_loop_t* loop);
+    RtcRecvStream(MEDIA_PKT_TYPE type, 
             uint32_t ssrc, uint8_t payload, int clock_rate,
             bool nack, uint8_t rtx_payload, uint32_t rtx_ssrc,
-            RtcSendStreamCallbackI* cb, Logger* logger);
-    ~RtcSendStream();
+            Logger* logger, uv_loop_t* loop);
+    ~RtcRecvStream();
 
 public:
     void SetSsrc(uint32_t ssrc) { ssrc_ = ssrc; }
@@ -52,13 +48,18 @@ public:
     uint32_t GetRtxSsrc() { return rtx_ssrc_; }
 
 public:
-    void SendPacket(Media_Packet_Ptr pkt_ptr);
     void OnTimer(int64_t now_ts);
 
 public:
-    void HandleRtcpRr(RtcpRrBlockInfo& block_info);
-    void HandleRtcpNack(RtcpFbNack* nack_pkt);
-    void HandleXrDlrr(XrDlrrData* dlrr_block);
+    virtual void GenerateNackList(const std::vector<uint16_t>& seq_vec) override;
+
+public:
+    void HandleRtpPacket(RtpPacket* pkt);
+    void GenerateJitter(uint32_t rtp_timestamp, int64_t recv_pkt_ms);
+
+public:
+    void HandleRtcpSr(RtcpSrPacket* pkt);
+    void HandleXrRrt(XrRrtData* rrt_block);
 
 public:
     uint32_t GetRtt() { return avg_rtt_; }
@@ -68,20 +69,12 @@ public:
     int64_t GetResendCount(int64_t now_ms, int64_t& resend_pps);
 
 private:
-    void SendVideoPacket(Media_Packet_Ptr pkt_ptr);
-    void SendAudioPacket(Media_Packet_Ptr pkt_ptr);
+    RtcpRrPacket* GetRtcpRr(int64_t now_ms);
 
 private:
-    void SendH264Packet(Media_Packet_Ptr pkt_ptr);
-
-private:
-    void SendVideoRtpPacket(RtpPacket* pkt, bool resend = false);
-    void SendAudioRtpPacket(RtpPacket* pkt);
-    void SaveBuffer(RtpPacket* pkt);
-    void ResendRtpPacket(uint16_t seq);
-
-private:
-    RtcpSrPacket* GetRtcpSr(int64_t now_ms);
+    void InitSeq(uint16_t seq);
+    void UpdateSeq(uint16_t seq);
+    int64_t GetExpectedPackets();
 
 private:
     Logger* logger_ = nullptr;
@@ -102,39 +95,29 @@ private:
     uint16_t rtx_seq_    = 0;
 
 private:
-    RtcSendStreamCallbackI* cb_ = nullptr;
+    bool first_pkt_ = false;
+    uint16_t base_seq_ = 0;
+    uint16_t max_seq_  = 0;
+    uint32_t bad_seq_  = RTP_SEQ_MOD + 1;   /* so seq == bad_seq is false */
+    uint32_t cycles_   = 0;
+    int64_t discard_count_ = 0;
 
 private:
-    uint8_t sps_[512];
-    uint8_t pps_[512];
-    int sps_len_ = 0;
-    int pps_len_ = 0;
+    int avg_rtt_ = 0;
+    float lost_rate_ = 0.0;
 
-private:
-    std::vector<RtpPacketInfo> send_buffer_;
+private://for jitter
+    int64_t last_diff_ms_ = 0;
+    int64_t jitter_ = 0;
 
-private://for rtcp sr
-    NTP_TIMESTAMP last_sr_ntp_ts_;
-    uint32_t last_sr_rtp_ts_ = 0;
-    uint32_t sent_count_ = 0;
-    uint32_t sent_bytes_ = 0;
-    int64_t  last_sr_ts_ = 0;//interval 500ms
-
-private:
-    uint32_t jitter_     = 0;
-    uint32_t lost_total_ = 0;
-    float lost_rate_     = 0.0;
-    float rtt_           = (float)RTT_DEFAULT;
-    float avg_rtt_       = (float)RTT_DEFAULT;
-    int64_t resend_cnt_  = 0;
-    int64_t last_resend_cnt_        = 0;
-    int64_t last_resend_statics_ms_ = 0;
+private://for nack
+    NackGenerator nack_generator_;
 
 private:
     StreamStatics statics_;
 };
 
+
 }
 
 #endif
-
