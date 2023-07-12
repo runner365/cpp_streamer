@@ -29,7 +29,7 @@ public:
             uint32_t ssrc, uint8_t payload, int clock_rate,
             bool nack, uint8_t rtx_payload, uint32_t rtx_ssrc,
             Logger* logger, uv_loop_t* loop);
-    ~RtcRecvStream();
+    virtual ~RtcRecvStream();
 
 public:
     void SetSsrc(uint32_t ssrc) { ssrc_ = ssrc; }

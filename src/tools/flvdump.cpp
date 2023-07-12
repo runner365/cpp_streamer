@@ -100,7 +100,7 @@ public:
 private:
     Logger* logger_ = nullptr;
     CppStreamerInterface* flv_demux_streamer_ = nullptr;
-    CppStreamerInterface* flv_mux_streamer_ = nullptr;
+    //CppStreamerInterface* flv_mux_streamer_ = nullptr;
 
 };
 

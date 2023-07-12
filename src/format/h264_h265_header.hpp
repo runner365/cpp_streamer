@@ -172,7 +172,7 @@ inline bool H264_IS_PPS(uint8_t nalu_type) {
 inline bool H264_IS_RESERVE(uint8_t nalu_type) {
     nalu_type = (nalu_type & 0x1f);
 
-    return (nalu_type >= kReserved22) && (nalu_type <- kReserved31);
+    return (nalu_type >= kReserved22) && (nalu_type <= kReserved31);
 }
 
 inline int GetNaluTypePos(uint8_t* data) {

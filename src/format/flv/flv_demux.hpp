@@ -56,7 +56,6 @@ private:
     std::string key_;
     bool has_video_ = false;
     bool has_audio_ = false;
-    bool change2annexb_ = true;
 
 private:
     bool flv_header_ready_ = false;

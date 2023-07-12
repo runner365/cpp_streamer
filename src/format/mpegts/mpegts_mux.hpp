@@ -130,7 +130,6 @@ private:
     bool video_ready_ = false;
     bool audio_ready_ = false;
     bool ready_       = false;
-    size_t MAX_WAIT_QUEUE = 30;
     std::queue<Media_Packet_Ptr> wait_queue_;
 };
 

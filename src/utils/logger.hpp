@@ -183,7 +183,7 @@ public:
         desc_ = description;
     }
 
-    const char* what() noexcept { return desc_.c_str(); }
+    virtual const char* what() const noexcept { return desc_.c_str(); } 
 
 private:
     std::string desc_;

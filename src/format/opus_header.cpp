@@ -7,8 +7,10 @@
 
 namespace cpp_streamer
 {
+#ifdef __linux__
 static const int INT_MAX = 0x7fffffff;
-
+#endif
+/*
 static const uint8_t opus_coupled_stream_cnt[9] = {
     1, 0, 1, 1, 2, 2, 2, 3, 3
 };
@@ -16,7 +18,6 @@ static const uint8_t opus_coupled_stream_cnt[9] = {
 static const uint8_t opus_stream_cnt[9] = {
     1, 1, 1, 2, 2, 3, 4, 4, 5,
 };
-
 static const uint8_t opus_channel_map[8][8] = {
     { 0 },
     { 0,1 },
@@ -33,6 +34,8 @@ static const uint8_t opus_default_extradata[30] = {
     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
+*/
+
 /*
  * Codec homepage: http://opus-codec.org/
  * Specification: http://tools.ietf.org/html/rfc6716

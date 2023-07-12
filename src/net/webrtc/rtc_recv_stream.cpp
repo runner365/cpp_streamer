@@ -135,5 +135,9 @@ int64_t RtcRecvStream::GetExpectedPackets() {
     return cycles_ + max_seq_ - bad_seq_ + 1;
 }
 
+void RtcRecvStream::GenerateNackList(const std::vector<uint16_t>& seq_vec) {
+
+}
+
 }
 

@@ -177,6 +177,7 @@ public:
         if (err != 0) {
             throw CppStreamException("uv_read_stop error");
         }
+        LogDebugf(logger_, "tcp close");
         uv_close(reinterpret_cast<uv_handle_t*>(uv_handle_), static_cast<uv_close_cb>(OnTcpClose));
     }
 

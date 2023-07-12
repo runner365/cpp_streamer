@@ -97,7 +97,6 @@ public:
 private:
     std::string src_url_;
     std::string output_flv_;
-    uv_handle_t* loop_ = nullptr;
 
 private:
     Logger* logger_ = nullptr;

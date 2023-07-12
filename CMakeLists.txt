@@ -40,7 +40,12 @@ include_directories(${CMAKE_BINARY_DIR}/output/include
                     /usr/local/include)
 
 # set lib path
+IF (APPLE)
+link_directories(${CMAKE_BINARY_DIR}/output/lib /usr/local/lib)
+ELSEIF (UNIX)
 link_directories(${CMAKE_BINARY_DIR}/output/lib /usr/local/lib64 /usr/local/lib)
+ENDIF ()
+
 
 add_subdirectory(3rdparty)
 
@@ -134,6 +139,9 @@ add_library(whip SHARED
             ./src/net/webrtc/srtp_session.cpp
             ./src/net/webrtc/dtls.cpp
             ./src/net/webrtc/rtc_send_stream.cpp
+            ./src/net/webrtc/rtc_recv_stream.cpp
+            ./src/net/webrtc/jitterbuffer.cpp
+            ./src/net/webrtc/nack_generator.cpp
             ./src/net/http/http_client.cpp
             ./src/net/rtprtcp/rtp_packet.cpp
             ./src/net/rtprtcp/rtp_h264_pack.cpp
@@ -158,6 +166,9 @@ add_library(mspush SHARED
             ./src/net/webrtc/srtp_session.cpp
             ./src/net/webrtc/dtls.cpp
             ./src/net/webrtc/rtc_send_stream.cpp
+            ./src/net/webrtc/rtc_recv_stream.cpp
+            ./src/net/webrtc/jitterbuffer.cpp
+            ./src/net/webrtc/nack_generator.cpp
             ./src/net/http/http_client.cpp
             ./src/net/rtprtcp/rtp_packet.cpp
             ./src/net/rtprtcp/rtp_h264_pack.cpp
