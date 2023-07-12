@@ -20,7 +20,7 @@ typedef struct {
     int retry_count;
     int64_t last_ms;
     RtpPacket* pkt;
-} RtpPacketInfo;
+} SendRtpPacketInfo;
 
 class RtcSendStream
 {
@@ -111,7 +111,7 @@ private:
     int pps_len_ = 0;
 
 private:
-    std::vector<RtpPacketInfo> send_buffer_;
+    std::vector<SendRtpPacketInfo> send_buffer_;
 
 private://for rtcp sr
     NTP_TIMESTAMP last_sr_ntp_ts_;

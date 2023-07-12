@@ -7,6 +7,7 @@
 #include "srtp_session.hpp"
 #include "rtc_send_stream.hpp"
 #include "rtc_recv_stream.hpp"
+#include "jitterbuffer.hpp"
 #include "timer.hpp"
 #include "rtcp_xr_dlrr.hpp"
 
@@ -36,6 +37,7 @@ public:
 class PeerConnection : public UdpSessionCallbackI
     , public RtcSendStreamCallbackI
     , public TimerInterface
+    , public JitterBufferCallbackI
 {
 public:
     PeerConnection(uv_loop_t* loop, Logger* logger, PCStateReportI* state_report);
@@ -99,6 +101,10 @@ protected:
     virtual void SendRtpPacket(uint8_t* data, size_t len) override;
     virtual void SendRtcpPacket(uint8_t* data, size_t len) override;
 
+public:
+    virtual void RtpPacketReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) override;
+    virtual void RtpPacketOutput(std::shared_ptr<RtpPacketInfo> pkt_ptr) override;
+
 private:
     std::string GetDirectionString(WebRtcSdpDirection direction_type);
     void Report(const std::string& key, const std::string& value);
@@ -158,6 +164,10 @@ private:
 
 private:
     int64_t last_statics_ms_ = -1;
+
+private:
+    JitterBuffer jb_video_;
+    JitterBuffer jb_audio_;
 };
 
 }

@@ -23,6 +23,8 @@ PeerConnection::PeerConnection(uv_loop_t* loop,
                                                       , dtls_(this, logger)
                                                       , offer_sdp_(&dtls_, logger)
                                                       , answer_sdp_(&dtls_, logger)
+                                                      , jb_video_(MEDIA_VIDEO_TYPE, this, loop, logger)
+                                                      , jb_audio_(MEDIA_AUDIO_TYPE, this, loop, logger)
 {
     udp_client_ = new UdpClient(loop, this, logger, nullptr, 0);
     dtls_.udp_client_ = udp_client_;
@@ -630,9 +632,11 @@ void PeerConnection::HandleRtpData(uint8_t* data, size_t len) {
         uint32_t ssrc = pkt->GetSsrc();
         if (ssrc == video_recv_stream_->GetSsrc()) {
             video_recv_stream_->HandleRtpPacket(pkt);
+            jb_video_.InputRtpPacket(video_recv_stream_->GetClockRate(), pkt);
             return;
         } else if (ssrc == audio_recv_stream_->GetSsrc()) {
             audio_recv_stream_->HandleRtpPacket(pkt);
+            jb_audio_.InputRtpPacket(audio_recv_stream_->GetClockRate(), pkt);
             return;
         } else {
             LogErrorf(logger_, "fail to find ssrc:%u", ssrc);
@@ -1153,5 +1157,12 @@ std::string PeerConnection::GetAudioCName() {
     return offer_sdp_.audio_cname_;
 }
 
+void PeerConnection::RtpPacketReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
+
+}
+
+void PeerConnection::RtpPacketOutput(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
+
+}
 
 }

@@ -1,15 +1,26 @@
 #include "jitterbuffer.hpp"
 #include "timeex.hpp"
+#include "logger.hpp"
 
 namespace cpp_streamer
 {
-JitterBuffer::JitterBuffer(JitterBufferCallbackI* cb, 
+JitterBuffer::JitterBuffer(MEDIA_PKT_TYPE type,
+        JitterBufferCallbackI* cb, 
         uv_loop_t* loop, 
         Logger* logger):TimerInterface(loop, 100)
                        , logger_(logger)
-                       , cb_(cb) {
+                       , cb_(cb) 
+                       , media_type_(type){
     for (size_t i = 0; i < BUFFER_POOL_SIZE; i++) {
         pkt_buffers_[i] = new uint8_t[RTP_PACKET_MAX_SIZE];
+    }
+    if (type == MEDIA_VIDEO_TYPE) {
+        buffer_timeout_ = JITTER_BUFFER_VIDEO_TIMEOUT;
+    } else if (type == MEDIA_AUDIO_TYPE) {
+        buffer_timeout_ = JITTER_BUFFER_AUDIO_TIMEOUT;
+    } else {
+        CSM_THROW_ERROR("JItterBuffer construct media_type %d error",
+                type);
     }
 }
 
@@ -21,8 +32,7 @@ JitterBuffer::~JitterBuffer() {
     }
 }
 
-void JitterBuffer::InputRtpPacket(MEDIA_PKT_TYPE media_type, 
-            int clock_rate, 
+void JitterBuffer::InputRtpPacket(int clock_rate, 
             RtpPacket* pkt) {
     int64_t extend_seq = 0;
     bool reset = false;
@@ -49,7 +59,7 @@ void JitterBuffer::InputRtpPacket(MEDIA_PKT_TYPE media_type,
         }
     }
 
-    auto pkt_info_ptr = std::make_shared<RtpPacketInfo>(media_type,
+    auto pkt_info_ptr = std::make_shared<RtpPacketInfo>(media_type_,
                                                         clock_rate,
                                                         input_pkt,
                                                         extend_seq);
@@ -115,7 +125,7 @@ void JitterBuffer::CheckTimeout() {
         std::shared_ptr<RtpPacketInfo> pkt_info_ptr = iter->second;
         int64_t diff_t = now_ms - pkt_info_ptr->pkt->GetLocalMs();
 
-        if (diff_t > JITTER_BUFFER_TIMEOUT) {
+        if (diff_t > buffer_timeout_) {
             if (pkt_info_ptr->media_type_ == MEDIA_VIDEO_TYPE) {
                 LogInfof(logger_, "timeout output type:%d, seq:%d",
                     pkt_info_ptr->media_type_, pkt_info_ptr->extend_seq_);

@@ -18,12 +18,11 @@ namespace cpp_streamer
 class JitterBuffer : public TimerInterface
 {
 public:
-    JitterBuffer(JitterBufferCallbackI* cb, uv_loop_t* loop, Logger* logger);
+    JitterBuffer(MEDIA_PKT_TYPE type, JitterBufferCallbackI* cb, uv_loop_t* loop, Logger* logger);
     ~JitterBuffer();
 
 public:
-    void InputRtpPacket(MEDIA_PKT_TYPE media_type, 
-            int clock_rate, 
+    void InputRtpPacket(int clock_rate, 
             RtpPacket* input_pkt);
 
 public:
@@ -39,6 +38,7 @@ private:
 private:
     Logger* logger_ = nullptr;
     JitterBufferCallbackI* cb_ = nullptr;
+    MEDIA_PKT_TYPE media_type_;
     bool init_flag_ = false;
     uint16_t base_seq_ = 0;
     uint16_t max_seq_  = 0;
@@ -53,6 +53,9 @@ private:
 private:
     uint8_t* pkt_buffers_[BUFFER_POOL_SIZE];
     size_t buffer_index_ = 0;
+
+private:
+    int64_t buffer_timeout_ = JITTER_BUFFER_VIDEO_TIMEOUT;
 };
 
 }

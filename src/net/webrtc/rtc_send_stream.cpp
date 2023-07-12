@@ -276,7 +276,7 @@ RtcpSrPacket* RtcSendStream::GetRtcpSr(int64_t now_ms) {
 void RtcSendStream::SaveBuffer(RtpPacket* pkt) {
     if (nack_enable_) {
         size_t index = pkt->GetSeq() % SEND_BUFFER_SIZE;
-        RtpPacketInfo& info = send_buffer_[index];
+        SendRtpPacketInfo& info = send_buffer_[index];
         if (info.pkt) {
             delete info.pkt;
             info.pkt = nullptr;
@@ -290,7 +290,7 @@ void RtcSendStream::SaveBuffer(RtpPacket* pkt) {
 void RtcSendStream::ResendRtpPacket(uint16_t seq) {
     size_t index = seq % SEND_BUFFER_SIZE;
 
-    RtpPacketInfo& info = send_buffer_[index];
+    SendRtpPacketInfo& info = send_buffer_[index];
     if (!info.pkt) {
         LogWarnf(logger_, "fail to find rtp packet by seq:%d, index:%lu", seq, index);
         return;
