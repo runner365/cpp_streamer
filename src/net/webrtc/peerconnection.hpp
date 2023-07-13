@@ -128,6 +128,7 @@ private:
 
     void SendStun(int64_t now_ms);
     void SendXrDlrr(int64_t now_ms);
+    void SendRr(int64_t now_ms);
 
 private:
     uv_loop_t* loop_ = nullptr;

@@ -24,10 +24,12 @@ public:
     RtcRecvStream(MEDIA_PKT_TYPE type, 
             uint32_t ssrc, uint8_t payload, 
             int clock_rate, bool nack, 
+            RtcSendStreamCallbackI* cb,
             Logger* logger, uv_loop_t* loop);
     RtcRecvStream(MEDIA_PKT_TYPE type, 
             uint32_t ssrc, uint8_t payload, int clock_rate,
             bool nack, uint8_t rtx_payload, uint32_t rtx_ssrc,
+            RtcSendStreamCallbackI* cb,
             Logger* logger, uv_loop_t* loop);
     virtual ~RtcRecvStream();
 
@@ -48,7 +50,7 @@ public:
     uint32_t GetRtxSsrc() { return rtx_ssrc_; }
 
 public:
-    void OnTimer(int64_t now_ts);
+    RtcpRrBlockInfo* GetRtcpRr(int64_t now_ms);
 
 public:
     virtual void GenerateNackList(const std::vector<uint16_t>& seq_vec) override;
@@ -69,12 +71,10 @@ public:
     int64_t GetResendCount(int64_t now_ms, int64_t& resend_pps);
 
 private:
-    RtcpRrPacket* GetRtcpRr(int64_t now_ms);
-
-private:
     void InitSeq(uint16_t seq);
     void UpdateSeq(uint16_t seq);
     int64_t GetExpectedPackets();
+    int64_t GetPacketLost();
 
 private:
     Logger* logger_ = nullptr;
@@ -101,6 +101,18 @@ private:
     uint32_t bad_seq_  = RTP_SEQ_MOD + 1;   /* so seq == bad_seq is false */
     uint32_t cycles_   = 0;
     int64_t discard_count_ = 0;
+    
+private://for rtcp sr
+    int64_t expect_recv_   = 0;
+    int64_t last_recv_     = 0;
+    int64_t rtp_timestamp_ = 0;
+    int64_t last_sr_ms_    = 0;
+    int64_t pkt_count_     = 0;
+    int64_t bytes_count_   = 0;
+    uint32_t lsr_          = 0;
+    uint8_t frac_lost_     = 0;
+    double lost_percent_   = 0.0;
+    int64_t total_lost_    = 0;
 
 private:
     int avg_rtt_ = 0;
@@ -112,6 +124,9 @@ private://for jitter
 
 private://for nack
     NackGenerator nack_generator_;
+
+private:
+    RtcSendStreamCallbackI* send_cb_ = nullptr;//send rtcp
 
 private:
     StreamStatics statics_;

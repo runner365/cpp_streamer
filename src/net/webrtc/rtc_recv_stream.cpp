@@ -1,4 +1,5 @@
 #include "rtc_recv_stream.hpp"
+#include "rtcpfb_nack.hpp"
 #include "logger.hpp"
 
 namespace cpp_streamer
@@ -6,6 +7,7 @@ namespace cpp_streamer
 RtcRecvStream::RtcRecvStream(MEDIA_PKT_TYPE type, 
         uint32_t ssrc, uint8_t payload, 
         int clock_rate, bool nack, 
+        RtcSendStreamCallbackI* cb,
         Logger* logger, uv_loop_t* loop):logger_(logger)
                                          , media_type_(type)
                                          , nack_enable_(nack)
@@ -13,6 +15,7 @@ RtcRecvStream::RtcRecvStream(MEDIA_PKT_TYPE type,
                                          , pt_(payload)
                                          , clock_rate_(clock_rate)
                                          , nack_generator_(loop, logger, this)
+                                         , send_cb_(cb)
 {
     has_rtx_ = false;
     LogInfof(logger_, "RtcRecvStream construct type:%s, ssrc:%u, payload:%d, clock rate:%d, nack:%s, rtx:disable",
@@ -24,6 +27,7 @@ RtcRecvStream::RtcRecvStream(MEDIA_PKT_TYPE type,
 RtcRecvStream::RtcRecvStream(MEDIA_PKT_TYPE type, 
         uint32_t ssrc, uint8_t payload, int clock_rate,
         bool nack, uint8_t rtx_payload, uint32_t rtx_ssrc,
+        RtcSendStreamCallbackI* cb,
         Logger* logger, uv_loop_t* loop) :logger_(logger)
                                           , media_type_(type)
                                           , nack_enable_(nack)
@@ -31,6 +35,7 @@ RtcRecvStream::RtcRecvStream(MEDIA_PKT_TYPE type,
                                           , pt_(payload)
                                           , clock_rate_(clock_rate)
                                           , nack_generator_(loop, logger, this)
+                                          , send_cb_(cb)
 {
     has_rtx_ = true;
     rtx_payload_ = rtx_payload;
@@ -135,8 +140,81 @@ int64_t RtcRecvStream::GetExpectedPackets() {
     return cycles_ + max_seq_ - bad_seq_ + 1;
 }
 
-void RtcRecvStream::GenerateNackList(const std::vector<uint16_t>& seq_vec) {
+int64_t RtcRecvStream::GetPacketLost() {
+    int64_t expected = GetExpectedPackets();
+    int64_t recv_count = (int64_t)statics_.GetCount();
 
+    int64_t expected_interval = expected - expect_recv_;
+    expect_recv_ = expected;
+
+    int64_t recv_interval = recv_count - last_recv_;
+    if (last_recv_ <= 0) {
+        last_recv_ = recv_count;
+        return 0;
+    }
+    last_recv_ = recv_count;
+
+    if ((expected_interval <= 0) || (recv_interval <= 0)) {
+        frac_lost_ = 0;
+    } else {
+        //log_infof("expected_interval:%ld, recv_interval:%ld, ssrc:%u, media:%s",
+        //    expected_interval, recv_interval, ssrc_, media_type_.c_str());
+        total_lost_ += expected_interval - recv_interval;
+        frac_lost_ = std::round((double)((expected_interval - recv_interval) * 256) / expected_interval);
+        lost_percent_ = (expected_interval - recv_interval) / expected_interval;
+    }
+
+    return total_lost_;
+}
+
+void RtcRecvStream::GenerateNackList(const std::vector<uint16_t>& seq_vec) {
+    RtcpFbNack* nack_pkt = new RtcpFbNack(0, ssrc_);
+    nack_pkt->InsertSeqList(seq_vec);
+
+    send_cb_->SendRtcpPacket(nack_pkt->GetData(), nack_pkt->GetLen());
+
+    delete nack_pkt;
+}
+
+void RtcRecvStream::HandleRtcpSr(RtcpSrPacket* sr_pkt) {
+    int64_t now_ms = now_millisec();
+    NTP_TIMESTAMP ntp_;
+
+    ntp_.ntp_sec   = sr_pkt->GetNtpSec();
+    ntp_.ntp_frac  = sr_pkt->GetNtpFrac();
+    rtp_timestamp_ = (int64_t)sr_pkt->GetRtpTimestamp();
+    pkt_count_     = sr_pkt->GetPktCount();
+    bytes_count_   = sr_pkt->GetBytesCount();
+
+    last_sr_ms_ = now_ms;
+    lsr_ = ((ntp_.ntp_sec & 0xffff) << 16) | (ntp_.ntp_frac & 0xffff);
+}
+
+RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
+    RtcpRrBlockInfo* rr_block = new RtcpRrBlockInfo();
+    uint32_t highest_seq = (uint32_t)(max_seq_ + cycles_);
+    uint32_t dlsr = 0;
+
+    if (last_sr_ms_ > 0) {
+        double diff_t = (double)(now_millisec() - last_sr_ms_);
+        double dlsr_float = diff_t / 1000 * 65535;
+
+        dlsr = (uint32_t)dlsr_float;
+        //log_infof("send_rtcp_rr ssrc:%u, diff_t:%f, dlsr_float:%f, dlsr:%u",
+        //    ssrc_, diff_t, dlsr_float, dlsr);
+    }
+    
+    int64_t total_lost = GetPacketLost();
+
+    rr_block->SetReporteeSsrc(ssrc_);
+    rr_block->SetFracLost(frac_lost_);
+    rr_block->SetCumulativeLost(total_lost);
+    rr_block->SetHighestSeq(highest_seq);
+    rr_block->SetJitter(jitter_);
+    rr_block->SetLsr(lsr_);
+    rr_block->SetDlsr(dlsr);
+
+    return rr_block;
 }
 
 }

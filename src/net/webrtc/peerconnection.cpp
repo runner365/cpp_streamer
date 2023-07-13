@@ -735,7 +735,7 @@ void PeerConnection::CreateRecvStream() {
                 answer_sdp_.GetVideoSsrc(),
                 answer_sdp_.GetVideoPayloadType(),
                 answer_sdp_.GetVideoClockRate(),
-                video_nack, rtx_payload, rtx_ssrc,
+                video_nack, rtx_payload, rtx_ssrc, this,
                 logger_, loop_);
            
         } else {
@@ -743,7 +743,7 @@ void PeerConnection::CreateRecvStream() {
                 answer_sdp_.GetVideoSsrc(),
                 answer_sdp_.GetVideoPayloadType(),
                 answer_sdp_.GetVideoClockRate(),
-                video_nack, logger_, loop_);
+                video_nack, this, logger_, loop_);
         }
     }
 
@@ -752,7 +752,7 @@ void PeerConnection::CreateRecvStream() {
                 answer_sdp_.GetAudioSsrc(),
                 answer_sdp_.GetAudioPayloadType(),
                 answer_sdp_.GetAudioClockRate(),
-                audio_nack, logger_, loop_);
+                audio_nack, this, logger_, loop_);
         audio_recv_stream_->SetChannel(answer_sdp_.channel_);
     }
 
@@ -874,9 +874,45 @@ void PeerConnection::OnTimer() {
         audio_send_stream_->OnTimer(now_ms);
     }
 
+    SendRr(now_ms);
     SendXrDlrr(now_ms);
 
     OnStatics(now_ms);
+}
+
+void PeerConnection::SendRr(int64_t now_ms) {
+    RtcpRrPacket rr_pkt;
+    RtcpRrBlockInfo* video_rr_block = nullptr;
+    RtcpRrBlockInfo* audio_rr_block = nullptr;
+
+    if (video_recv_stream_) {
+        video_rr_block = video_recv_stream_->GetRtcpRr(now_ms);
+        if (video_rr_block) {
+            rr_pkt.AddRrBlock(video_rr_block->GetBlock());
+        }
+    }
+    if (audio_recv_stream_) {
+        audio_rr_block = video_recv_stream_->GetRtcpRr(now_ms);
+        if (audio_rr_block) {
+            rr_pkt.AddRrBlock(audio_rr_block->GetBlock());
+        }
+    }
+
+    if (video_rr_block || audio_rr_block) {
+        size_t data_len;
+        uint8_t* data = rr_pkt.GetData(data_len);
+        SendRtcpPacket(data, data_len);
+    }
+
+    if (video_rr_block) {
+        delete video_rr_block;
+        video_rr_block = nullptr;
+    }
+
+    if (audio_rr_block) {
+        delete audio_rr_block;
+        audio_rr_block = nullptr;
+    }
 }
 
 void PeerConnection::SendXrDlrr(int64_t now_ms) {

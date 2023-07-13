@@ -54,16 +54,24 @@ class RtcpRrBlockInfo
 {
 private:
     RtcpRrBlock* block_ = nullptr;
+    bool need_delete_   = false;
 
 public:
     RtcpRrBlockInfo()
     {
+        need_delete_ = true;
+        block_ = (RtcpRrBlock*)malloc(sizeof(RtcpRrBlock));
     }
     RtcpRrBlockInfo(RtcpRrBlock* block):block_(block)
     {
+        need_delete_ = false;
     }
     ~RtcpRrBlockInfo()
     {
+        if (need_delete_ && block_) {
+            free((void*)block_);
+            block_ = nullptr;
+        }
     }
 
 public:
@@ -179,14 +187,26 @@ public:
     }
 
     uint8_t* GetData(size_t& data_len) {
-        data_len = sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpRrBlock);
+        if (rr_blocks_.empty()) {
+            data_len = 0;
+            return 0;
+        }
+        data_len = sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpRrBlock) * rr_blocks_.size();
         RtcpCommonHeader* rtcp_header = (RtcpCommonHeader*)this->data;
         rtcp_header->version     = 2;
         rtcp_header->padding     = 0;
-        rtcp_header->count       = 0;
+        rtcp_header->count       = this->rr_blocks_.size();
         rtcp_header->packet_type = RTCP_RR;
         rtcp_header->length      = (uint32_t)htons(data_len/4) - 1;
         
+        uint32_t* ssrc_p = (uint32_t*)(rtcp_header + 1);
+        *ssrc_p = 1;
+        
+        RtcpRrBlock* block = (RtcpRrBlock*)(ssrc_p + 1);
+        for (RtcpRrBlockInfo& info : this->rr_blocks_) {
+            memcpy(block, info.GetBlock(), sizeof(RtcpRrBlock));
+            block++;
+        }
         return (uint8_t*)this->data;
     }
 
