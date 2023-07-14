@@ -156,6 +156,7 @@ public:
     RtcpRrPacket() {
         memset(this->data, 0, sizeof(this->data));
         this->rtcp_header_ = (RtcpCommonHeader*)(this->data);
+        this->reporter_ssrc_p_ = (uint32_t*)(this->rtcp_header_ + 1);
     }
 
     RtcpRrPacket(uint8_t* header, size_t len) {

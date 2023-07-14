@@ -1198,7 +1198,7 @@ void PeerConnection::RtpPacketReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
 }
 
 void PeerConnection::RtpPacketOutput(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
-
+    LogInfof(logger_, "media packet:%s", pkt_ptr->pkt->Dump().c_str());
 }
 
 }
