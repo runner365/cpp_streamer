@@ -38,7 +38,7 @@ void NackGenerator::UpdateNackList(RtpPacket* pkt) {
         return;
     }
 
-    LogInfof(logger_, "nack packet seq:%d", seq);
+    //LogInfof(logger_, "nack packet seq:%d", seq);
     if (SeqLowerThan(seq, last_seq_)) {
         auto iter = nack_map_.find(seq);
 
