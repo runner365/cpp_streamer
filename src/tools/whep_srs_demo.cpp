@@ -34,14 +34,15 @@ public:
         loop_ = loop_handle;
 
         whep_streamer_ = CppStreamerFactory::MakeStreamer("whep");
-        if (!whep_streamer_) {
-            LogErrorf(logger_, "make streamer whep error");
-            return -1;
-        }
-        LogInfof(logger_, "make whep streamer:%p, name:%s", whep_streamer_, whep_streamer_->StreamerName().c_str());
         whep_streamer_->SetLogger(logger_);
         whep_streamer_->SetReporter(this);
-        whep_streamer_->AddSinker(this);
+
+        ts_streamer_ = CppStreamerFactory::MakeStreamer("mpegtsmux");
+        ts_streamer_->SetLogger(logger_);
+        ts_streamer_->SetReporter(this);
+
+        whep_streamer_->AddSinker(ts_streamer_);
+        ts_streamer_->AddSinker(this);
 
         return 0;
 
@@ -87,7 +88,12 @@ public:
         return 0;
     }
     virtual int SourceData(Media_Packet_Ptr pkt_ptr) override {
-        LogInfof(logger_, "whep media packet:%s", pkt_ptr->Dump().c_str());
+        FILE* file_p = fopen(ts_file_.c_str(), "ab+");
+        if (file_p) {
+            fwrite(pkt_ptr->buffer_ptr_->Data(), 1, pkt_ptr->buffer_ptr_->DataLen(), file_p);
+            fclose(file_p);
+        }
+
         return 0;
     }
     virtual void StartNetwork(const std::string& url, void* loop_handle) override {
@@ -110,6 +116,7 @@ private:
 private:
     Logger* logger_ = nullptr;
     CppStreamerInterface* whep_streamer_ = nullptr;
+    CppStreamerInterface* ts_streamer_   = nullptr;
 };
 
 /*

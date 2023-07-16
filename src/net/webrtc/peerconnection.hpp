@@ -10,6 +10,8 @@
 #include "jitterbuffer.hpp"
 #include "timer.hpp"
 #include "rtcp_xr_dlrr.hpp"
+#include "pack_handle_pub.hpp"
+#include "media_callback_interface.hpp"
 
 namespace cpp_streamer
 {
@@ -38,6 +40,7 @@ class PeerConnection : public UdpSessionCallbackI
     , public RtcSendStreamCallbackI
     , public TimerInterface
     , public JitterBufferCallbackI
+    , public PackCallbackI
 {
 public:
     PeerConnection(uv_loop_t* loop, Logger* logger, PCStateReportI* state_report);
@@ -85,6 +88,9 @@ public:
     void CreateSendStream2();
 
 public:
+    void SetMediaCallback(MediaCallbackI* cb) { media_cb_ = cb; }
+
+public:
     void OnDtlsConnected(CRYPTO_SUITE_ENUM suite,
                 uint8_t* local_key, size_t local_key_len,
                 uint8_t* remote_key, size_t remote_key_len);
@@ -105,9 +111,14 @@ public:
     virtual void RtpPacketReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) override;
     virtual void RtpPacketOutput(std::shared_ptr<RtpPacketInfo> pkt_ptr) override;
 
+public:
+    virtual void PackHandleReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) override;
+    virtual void MediaPacketOutput(std::shared_ptr<Media_Packet> pkt_ptr) override;
+
 private:
     std::string GetDirectionString(WebRtcSdpDirection direction_type);
     void Report(const std::string& key, const std::string& value);
+
 
 private:
     void CreateSendStream();
@@ -169,6 +180,16 @@ private:
 private:
     JitterBuffer jb_video_;
     JitterBuffer jb_audio_;
+
+private:
+    PackHandleBase* h264_pack_    = nullptr;
+    PackHandleBase* audio_pack_ = nullptr;
+
+private:
+    MediaCallbackI* media_cb_ = nullptr;
+
+private:
+    int64_t last_rr_ms_ = -1;
 };
 
 }

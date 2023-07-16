@@ -1,9 +1,12 @@
 #include "rtc_recv_stream.hpp"
 #include "rtcpfb_nack.hpp"
+#include "rtcp_pspli.hpp"
 #include "logger.hpp"
 
 namespace cpp_streamer
 {
+#define REQ_KEYFRAME_INTERVAL (5*1000)
+
 RtcRecvStream::RtcRecvStream(MEDIA_PKT_TYPE type, 
         uint32_t ssrc, uint8_t payload, 
         int clock_rate, bool nack, 
@@ -89,6 +92,8 @@ void RtcRecvStream::HandleRtpPacket(RtpPacket* pkt) {
     if (nack_enable_) {
         nack_generator_.UpdateNackList(pkt);
     }
+
+    statics_.Update(pkt->GetDataLength(), now_millisec());
 }
 
 //rfc3550: A.1 RTP Data Header Validity Checks
@@ -171,6 +176,7 @@ void RtcRecvStream::GenerateNackList(const std::vector<uint16_t>& seq_vec) {
     RtcpFbNack* nack_pkt = new RtcpFbNack(0, ssrc_);
     nack_pkt->InsertSeqList(seq_vec);
 
+    resend_count_ += seq_vec.size();
     send_cb_->SendRtcpPacket(nack_pkt->GetData(), nack_pkt->GetLen());
 
     delete nack_pkt;
@@ -188,6 +194,8 @@ void RtcRecvStream::HandleRtcpSr(RtcpSrPacket* sr_pkt) {
 
     last_sr_ms_ = now_ms;
     lsr_ = ((ntp_.ntp_sec & 0xffff) << 16) | (ntp_.ntp_frac & 0xffff);
+    LogInfof(logger_, "rtc recv stream media type:%d, ntp:%u.%u, rtp ts:%ld, pkt count:%u, bytes:%u",
+            media_type_, ntp_.ntp_sec, ntp_.ntp_frac, rtp_timestamp_, pkt_count_, bytes_count_);
 }
 
 RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
@@ -215,6 +223,70 @@ RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
     rr_block->SetDlsr(dlsr);
 
     return rr_block;
+}
+
+void RtcRecvStream::OnTimer(int64_t now_ms) {
+
+    RequestKeyFrame(now_ms);
+}
+
+void RtcRecvStream::RequestKeyFrame(int64_t now_ms) {
+    if (media_type_ != MEDIA_VIDEO_TYPE) {
+        LogErrorf(logger_, "only video request keyframe.");
+        return;
+    }
+
+    if (now_ms > 0) {
+        if (last_keyframe_ms_ <= 0) {
+            last_keyframe_ms_ = now_ms;
+        } else {
+            int64_t diff_t = now_ms - last_keyframe_ms_;
+            if (diff_t < REQ_KEYFRAME_INTERVAL) {
+                return;
+            }
+            last_keyframe_ms_ = now_ms;
+        }
+    } else {
+        last_keyframe_ms_ = now_millisec();
+    }
+
+    RtcpPsPli* pspli_pkt = new RtcpPsPli();
+
+    pspli_pkt->SetSenderSsrc(1);
+    pspli_pkt->SetMediaSsrc(ssrc_);
+
+    //LogInfof(logger_, "request frame:%s", pspli_pkt->Dump().c_str());
+    send_cb_->SendRtcpPacket(pspli_pkt->GetData(), pspli_pkt->GetDataLen());
+
+    delete pspli_pkt;
+}
+
+void RtcRecvStream::GetStatics(size_t& kbits, size_t& pps) {
+    int64_t now_ms = now_millisec();
+
+    kbits = statics_.BytesPerSecond(now_ms, pps) * 8 / 1000;
+}
+
+
+int64_t RtcRecvStream::GetResendCount(int64_t now_ms, int64_t& resend_pps) {
+    if (last_resend_ms_ <= 0) {
+        last_resend_ms_ = now_ms;
+        last_resend_count_ = resend_count_;
+        return resend_count_;
+    }
+
+    int64_t diff_t = now_ms - last_resend_ms_;
+
+    if (diff_t <= 0) {
+        return resend_count_;
+    }
+    int64_t diff_count = resend_count_ - last_resend_count_;
+    resend_pps = diff_count * 1000 / diff_t;
+
+    last_resend_ms_ = now_ms;
+    last_resend_count_ = resend_count_;
+
+    return resend_count_;
 }
 
 }

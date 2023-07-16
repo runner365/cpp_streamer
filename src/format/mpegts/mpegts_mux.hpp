@@ -120,6 +120,7 @@ private:
     size_t sps_len_ = 0;
     uint8_t vps_[512];
     size_t vps_len_ = 0;
+    bool is_annexb_ = false;
 
 private:
     uint8_t aac_type_ = 0;
@@ -127,9 +128,10 @@ private:
     uint8_t channel_  = 0;
 
 private:
-    bool video_ready_ = false;
-    bool audio_ready_ = false;
-    bool ready_       = false;
+    bool video_ready_    = false;
+    bool audio_ready_    = false;
+    bool ready_          = false;
+    bool keyframe_ready_ = false;
     std::queue<Media_Packet_Ptr> wait_queue_;
 };
 

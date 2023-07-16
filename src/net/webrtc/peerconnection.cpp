@@ -10,11 +10,16 @@
 #include "srtp_session.hpp"
 #include "uuid.hpp"
 #include "byte_crypto.hpp"
+#include "pack_handle_h264.hpp"
+#include "pack_handle_audio.hpp"
+
 #include <cstring>
 #include <sstream>
 
 namespace cpp_streamer
 {
+#define RTCP_RR_INTERVAL (1*1000)
+
 PeerConnection::PeerConnection(uv_loop_t* loop, 
         Logger* logger, PCStateReportI* state_report):TimerInterface(loop, 300)
                                                       , loop_(loop)
@@ -58,6 +63,16 @@ PeerConnection::~PeerConnection()
     if (audio_send_stream_) {
         delete audio_send_stream_;
         audio_send_stream_ = nullptr;
+    }
+
+    if (h264_pack_) {
+        delete h264_pack_;
+        h264_pack_ = nullptr;
+    }
+
+    if (audio_pack_) {
+        delete audio_pack_;
+        audio_pack_ = nullptr;
     }
 }
 
@@ -358,8 +373,22 @@ std::string PeerConnection::CreateOfferSdp(WebRtcSdpDirection direction_type) {
 }
 
 int PeerConnection::HandleRtcpSr(uint8_t* data, int len) {
-    int ret = sizeof(RtcpCommonHeader) + sizeof(RtcpSrHeader);
+    int ret = 0;
+    try {
+        RtcpSrPacket* rr_pkt = RtcpSrPacket::Parse(data, len);
+        uint32_t ssrc = rr_pkt->GetSsrc();
+        if (ssrc == video_recv_stream_->GetSsrc()) {
+            video_recv_stream_->HandleRtcpSr(rr_pkt);
+        }
 
+        if (ssrc == audio_recv_stream_->GetSsrc()) {
+            audio_recv_stream_->HandleRtcpSr(rr_pkt);
+        }
+        delete rr_pkt;
+    } catch(CppStreamException& e) {
+        LogErrorf(logger_, "handle rtcp rr exception:%s", e.what());
+        ret = -1;
+    }
     return ret;
 }
 
@@ -490,9 +519,11 @@ int PeerConnection::HandleRtcpXr(uint8_t* data, int data_len) {
 
 void PeerConnection::HandleRtcp(uint8_t* data, size_t len) {
     if (!read_srtp_) {
+        LogWarnf(logger_, "read srtp is not ready");
         return;
     }
     if (read_srtp_->DecryptSrtcp(data, &len) == false) {
+        LogErrorf(logger_, "read srtp decrypt srtcp error, len:%lu", len);
         return;
     }
     //handle rtcp packet
@@ -745,6 +776,7 @@ void PeerConnection::CreateRecvStream() {
                 answer_sdp_.GetVideoClockRate(),
                 video_nack, this, logger_, loop_);
         }
+        video_recv_stream_->RequestKeyFrame(-1);
     }
 
     if (answer_sdp_.GetAudioSsrc() > 0) {
@@ -874,6 +906,9 @@ void PeerConnection::OnTimer() {
         audio_send_stream_->OnTimer(now_ms);
     }
 
+    if (video_recv_stream_) {
+        video_recv_stream_->OnTimer(now_ms);
+    }
     SendRr(now_ms);
     SendXrDlrr(now_ms);
 
@@ -885,6 +920,16 @@ void PeerConnection::SendRr(int64_t now_ms) {
     RtcpRrBlockInfo* video_rr_block = nullptr;
     RtcpRrBlockInfo* audio_rr_block = nullptr;
 
+    if (last_rr_ms_ <= 0) {
+        last_rr_ms_ = now_ms;
+        return;
+    }
+    int64_t diff_t = now_ms - last_rr_ms_;
+    if (diff_t < RTCP_RR_INTERVAL) {
+        return;
+    }
+
+    last_rr_ms_ = now_ms;
     if (video_recv_stream_) {
         video_rr_block = video_recv_stream_->GetRtcpRr(now_ms);
         if (video_rr_block) {
@@ -1012,6 +1057,44 @@ void PeerConnection::OnStatics(int64_t now_ms) {
         ss << "}";
         Report("audio_statics", ss.str());
     }
+
+    if (video_recv_stream_) {
+        size_t vkps = 0;
+        size_t vpps = 0;
+        int64_t resend_pps = 0;
+        int64_t resend_total = 0;
+        std::stringstream ss;
+        
+        resend_total = video_recv_stream_->GetResendCount(now_ms, resend_pps);
+        video_recv_stream_->GetStatics(vkps, vpps);
+        ss << "{";
+        ss << "\"v_kbps\":" << vkps << ","; 
+        ss << "\"v_pps\":" << vpps << ",";
+        ss << "\"rtt\":" << video_recv_stream_->GetRtt() << ",";
+        ss << "\"jitter\":" << video_recv_stream_->GetJitter() << ",";
+        ss << "\"lost\":" << video_recv_stream_->GetLostRate() << ",";
+        ss << "\"resend total\":" << resend_total << ",";
+        ss << "\"resend pps\":" << resend_pps;
+        ss << "}";
+        Report("video_statics", ss.str());
+    }
+
+    if (audio_recv_stream_) {
+        size_t vkps = 0;
+        size_t vpps = 0;
+        std::stringstream ss;
+
+        audio_recv_stream_->GetStatics(vkps, vpps);
+        ss << "{";
+        ss << "\"v_kbps\":" << vkps << ","; 
+        ss << "\"v_pps\":" << vpps << ",";
+        ss << "\"rtt\":" << audio_recv_stream_->GetRtt() << ",";
+        ss << "\"jitter\":" << audio_recv_stream_->GetJitter() << ",";
+        ss << "\"lost\":" << audio_recv_stream_->GetLostRate();
+        ss << "}";
+        Report("audio_statics", ss.str());
+    }
+
 }
 
 void PeerConnection::SetRemoteIcePwd(const std::string& ice_pwd) {
@@ -1194,11 +1277,48 @@ std::string PeerConnection::GetAudioCName() {
 }
 
 void PeerConnection::RtpPacketReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
-
+    LogInfof(logger_, "rtp jitter buffer reset");
 }
 
 void PeerConnection::RtpPacketOutput(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
-    LogInfof(logger_, "media packet:%s", pkt_ptr->pkt->Dump().c_str());
+    if (pkt_ptr->media_type_ == MEDIA_VIDEO_TYPE) {
+        if (!h264_pack_) {
+            h264_pack_ = new PackHandleH264(this, loop_, logger_);
+        }
+        h264_pack_->InputRtpPacket(pkt_ptr);
+    } else if (pkt_ptr->media_type_ == MEDIA_AUDIO_TYPE) {
+        if (!audio_pack_) {
+            audio_pack_ = new PackHandleAudio(this, logger_);
+        }
+        audio_pack_->InputRtpPacket(pkt_ptr);
+    } else {
+        LogErrorf(logger_, "rtp pack receive unknown media type:%d",
+                pkt_ptr->media_type_);
+    }
 }
+
+void PeerConnection::PackHandleReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
+    LogInfof(logger_, "pack handle reset");
+    if (video_recv_stream_) {
+        video_recv_stream_->RequestKeyFrame(-1);
+    }
+}
+
+void PeerConnection::MediaPacketOutput(std::shared_ptr<Media_Packet> pkt_ptr) {
+    if (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE) {
+        pkt_ptr->dts_ = pkt_ptr->pts_ = pkt_ptr->dts_ * 1000 / video_recv_stream_->GetClockRate();
+        //LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen(), "video data");
+    } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
+        pkt_ptr->dts_ = pkt_ptr->pts_ = pkt_ptr->dts_ * 1000 / audio_recv_stream_->GetClockRate();
+    } else {
+        LogErrorf(logger_, "media packet unknown type:%d", pkt_ptr->av_type_);
+        return;
+    }
+    //LogInfof(logger_, "packed media packet:%s", pkt_ptr->Dump().c_str());
+    if (media_cb_) {
+        media_cb_->OnReceiveMediaPacket(pkt_ptr);
+    }
+}
+
 
 }

@@ -50,7 +50,9 @@ public:
     uint32_t GetRtxSsrc() { return rtx_ssrc_; }
 
 public:
+    void OnTimer(int64_t now_ms);
     RtcpRrBlockInfo* GetRtcpRr(int64_t now_ms);
+    void RequestKeyFrame(int64_t now_ms);
 
 public:
     virtual void GenerateNackList(const std::vector<uint16_t>& seq_vec) override;
@@ -66,7 +68,7 @@ public:
 public:
     uint32_t GetRtt() { return avg_rtt_; }
     uint32_t GetJitter() { return jitter_; }
-    float GetLostRate() { return lost_rate_; }
+    float GetLostRate() { return (float)lost_percent_; }
     void GetStatics(size_t& kbits, size_t& pps);
     int64_t GetResendCount(int64_t now_ms, int64_t& resend_pps);
 
@@ -114,9 +116,14 @@ private://for rtcp sr
     double lost_percent_   = 0.0;
     int64_t total_lost_    = 0;
 
+private://for request keyframe
+    int64_t last_keyframe_ms_ = -1;
+    
 private:
     int avg_rtt_ = 0;
-    float lost_rate_ = 0.0;
+    int64_t resend_count_ = 0;
+    int64_t last_resend_count_ = 0;
+    int64_t last_resend_ms_ = -1;
 
 private://for jitter
     int64_t last_diff_ms_ = 0;

@@ -4,6 +4,7 @@
 #include "http_client.hpp"
 #include "peerconnection.hpp"
 #include "cpp_streamer_interface.hpp"
+#include "media_callback_interface.hpp"
 #
 extern "C" {
 void* make_whep_streamer();
@@ -13,7 +14,7 @@ void destroy_whep_streamer(void* streamer);
 namespace cpp_streamer
 {
 
-class Whep : public CppStreamerInterface, public HttpClientCallbackI, public PCStateReportI
+class Whep : public CppStreamerInterface, public HttpClientCallbackI, public PCStateReportI, public MediaCallbackI
 {
 public:
     Whep();
@@ -34,6 +35,9 @@ protected:
 
 public:
     virtual void OnState(const std::string& type, const std::string& value) override;
+
+public://MediaCallbackI
+    virtual void OnReceiveMediaPacket(Media_Packet_Ptr pkt_ptr) override;
 
 private:
     void ReleaseHttpClient();

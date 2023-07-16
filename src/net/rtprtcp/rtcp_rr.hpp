@@ -13,6 +13,7 @@
 #include <sstream>
 #include <vector>
 #include <stdio.h>
+#include <iostream>
 
 namespace cpp_streamer
 {
@@ -198,7 +199,7 @@ public:
         rtcp_header->padding     = 0;
         rtcp_header->count       = this->rr_blocks_.size();
         rtcp_header->packet_type = RTCP_RR;
-        rtcp_header->length      = (uint32_t)htons(data_len/4) - 1;
+        rtcp_header->length      = htons(((uint16_t)data_len) / 4 - 1);
         
         uint32_t* ssrc_p = (uint32_t*)(rtcp_header + 1);
         *ssrc_p = 1;

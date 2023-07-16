@@ -9,6 +9,7 @@ namespace cpp_streamer
 {
 
 NackGenerator::NackGenerator(uv_loop_t* loop, Logger* logger, NackGeneratorCallbackI* cb):TimerInterface(loop, NACK_DEFAULT_TIMEOUT)
+                                                                             , logger_(logger)
     , cb_(cb)
 {
     StartTimer();
@@ -37,13 +38,14 @@ void NackGenerator::UpdateNackList(RtpPacket* pkt) {
         return;
     }
 
+    LogInfof(logger_, "nack packet seq:%d", seq);
     if (SeqLowerThan(seq, last_seq_)) {
         auto iter = nack_map_.find(seq);
 
         //the seq has been in the nack list, remove it.
         if (iter != nack_map_.end()) {
             nack_map_.erase(iter);
-            LogDebugf(logger_, "remove from nack map, ssrc:%u, seq:%d, last seq:%d, payloadtype:%d",
+            LogInfof(logger_, "remove from nack map, ssrc:%u, seq:%d, last seq:%d, payloadtype:%d",
                 pkt->GetSsrc(), seq, last_seq_, pkt->GetPayloadType());
             return;
         }
@@ -54,7 +56,7 @@ void NackGenerator::UpdateNackList(RtpPacket* pkt) {
             ss << " " << item.first;
         }
         ss << " ]";
-        LogDebugf(logger_, "receive the old packet which is not in nack list, ssrc:%u, seq:%d, last seq:%d, payloadtype:%d, nack list:%s",
+        LogInfof(logger_, "receive the old packet which is not in nack list, ssrc:%u, seq:%d, last seq:%d, payloadtype:%d, nack list:%s",
             pkt->GetSsrc(), seq, last_seq_, pkt->GetPayloadType(), ss.str().c_str());
         return;
     }
@@ -104,6 +106,7 @@ void NackGenerator::OnTimer() {
         iter++;
     }
 
+    LogInfof(logger_, "nack list len:%lu", lost_seq_list.size());
     if (!lost_seq_list.empty()) {
         std::sort(lost_seq_list.begin(), lost_seq_list.end());
         cb_->GenerateNackList(lost_seq_list);

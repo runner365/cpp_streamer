@@ -83,7 +83,7 @@ typedef struct RtcpCommonHeaderS
     uint8_t padding : 1;
     uint8_t version : 2;
     uint8_t packet_type : 8;
-    uint16_t length : 16;
+    uint16_t length;
 } RtcpCommonHeader;
 
 /*

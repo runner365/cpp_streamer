@@ -272,29 +272,78 @@ int MpegtsMux::HandleVideo(Media_Packet_Ptr pkt_ptr) {
 }
 
 int MpegtsMux::HandleH264(Media_Packet_Ptr pkt_ptr) {
+    uint8_t* p = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+
+    if (!is_annexb_) {
+        if (p[0] == 0 && p[1] == 0 && p[2] == 0 && p[3] == 1) {
+            is_annexb_ = true;
+        } else {
+            is_annexb_ = false;
+        }
+    }
+
     if (pkt_ptr->is_seq_hdr_) {
         uint8_t* data   = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
         size_t data_len = pkt_ptr->buffer_ptr_->DataLen();
 
-        GetSpsPpsFromExtraData(pps_, pps_len_, sps_, sps_len_, 
-                            data, data_len);
+        if (!is_annexb_) {
+            int ret = GetSpsPpsFromExtraData(pps_, pps_len_, sps_, sps_len_, 
+                    data, data_len);
+            if (ret != 0) {
+                LogErrorf(logger_, "get pps/sps from extra data error");
+                pps_len_ = 0;
+                sps_len_ = 0;
+                return 0;
+            }
+        } else {
+            int pos = GetNaluTypePos(data);
+            uint8_t nalu_type = data[pos] & 0x1f;
+            if (H264_IS_PPS(nalu_type)) {
+                pps_len_ = data_len;
+                memcpy(pps_, data, pps_len_);
+                return 0;
+            }
+            if (H264_IS_SPS(nalu_type)) {
+                sps_len_ = data_len;
+                memcpy(sps_, data, sps_len_);
+                return 0;
+            }
+ 
+        }
+        return 0;
+    }
+
+    if (sps_len_ < 0 || pps_len_ < 0) {
         return 0;
     }
 
     std::vector<std::shared_ptr<DataBuffer>> nalus;
-    bool ret = Avcc2Nalus((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
-                    pkt_ptr->buffer_ptr_->DataLen(), nalus);
+    bool ret = false;
+
+    if (is_annexb_) {
+        ret = AnnexB2Nalus((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
+                pkt_ptr->buffer_ptr_->DataLen(), nalus);
+    } else {
+        ret = Avcc2Nalus((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
+                pkt_ptr->buffer_ptr_->DataLen(), nalus);
+    }
     if (!ret) {
-        ReportEvent("error", "Avcc to Nalus error");
+        ReportEvent("error", "avcc/annexb to nalus error");
         return -1;
     }
 
     Media_Packet_Ptr nalu_pkt_ptr = std::make_shared<Media_Packet>();
+
+    nalu_pkt_ptr->copy_properties(pkt_ptr);
     for (std::shared_ptr<DataBuffer> item : nalus) {
         uint8_t* data = (uint8_t*)item->Data();
         size_t data_len = (size_t)item->DataLen();
+        int pos = GetNaluTypePos(data);
 
-        uint8_t nalu_type = data[4] & 0x1f;
+        if (pos != 4) {
+            LogInfof(logger_, "nale type pos:%d", pos);
+        }
+        uint8_t nalu_type = data[pos] & 0x1f;
         if (H264_IS_AUD(nalu_type)) {
             continue;
         }
@@ -308,21 +357,26 @@ int MpegtsMux::HandleH264(Media_Packet_Ptr pkt_ptr) {
             memcpy(sps_, data, sps_len_);
             continue;
         }
-        nalu_pkt_ptr->copy_properties(pkt_ptr);
         nalu_pkt_ptr->buffer_ptr_->Reset();
-        
+
         size_t aud_data_len = 0;
         uint8_t* aud_data = GetH264AudData(aud_data_len);
         nalu_pkt_ptr->buffer_ptr_->AppendData((char*)aud_data, aud_data_len);
         if (H264_IS_KEYFRAME(nalu_type)) {
+            //LogInfoData(logger_, data, data_len, "key frame");
+            //LogInfoData(logger_, sps_, sps_len_, "sps");
+            //LogInfoData(logger_, pps_, pps_len_, "pps");
+            keyframe_ready_ = true;
             nalu_pkt_ptr->buffer_ptr_->AppendData((char*)sps_, sps_len_);
             nalu_pkt_ptr->buffer_ptr_->AppendData((char*)pps_, pps_len_);
         }
         nalu_pkt_ptr->buffer_ptr_->AppendData((char*)data, data_len);
-        
-        WritePes(nalu_pkt_ptr);
+
+        if (keyframe_ready_) {
+            WritePes(nalu_pkt_ptr);
+        }
     }
-    
+
     return 0;
 }
 
