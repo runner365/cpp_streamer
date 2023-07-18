@@ -188,7 +188,7 @@ void Whep::OnHttpRead(int ret, std::shared_ptr<HttpClientResponse> resp_ptr) {
 }
 
 void Whep::OnState(const std::string& type, const std::string& value) {
-    LogInfof(logger_, "whep state subpath:%s, type:%s, value:%s",
+    LogDebugf(logger_, "whep state subpath:%s, type:%s, value:%s",
             subpath_.c_str(), type.c_str(), value.c_str());
 
     if (type == "dtls" && value == "ready") {

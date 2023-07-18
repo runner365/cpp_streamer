@@ -161,7 +161,8 @@ ENDIF ()
 ################################################################
 ## mspush streamer module
 add_library(mspush SHARED
-            ./src/net/webrtc/mediasoup_broadcaster.cpp
+            ./src/net/webrtc/ms_push.cpp
+            ./src/net/webrtc/mediasoup_pub.cpp
             ./src/net/webrtc/peerconnection.cpp
             ./src/net/webrtc/srtp_session.cpp
             ./src/net/webrtc/dtls.cpp
@@ -212,5 +213,34 @@ target_link_libraries(whep pthread dl z m srtp2 ssl crypto uv)
 ELSEIF (UNIX)
 target_link_libraries(whep pthread rt dl z m srtp2 ssl crypto uv)
 ENDIF ()
+
+################################################################
+## mspull streamer module
+add_library(mspull SHARED
+            ./src/net/webrtc/ms_pull.cpp
+            ./src/net/webrtc/mediasoup_pub.cpp
+            ./src/net/webrtc/peerconnection.cpp
+            ./src/net/webrtc/srtp_session.cpp
+            ./src/net/webrtc/dtls.cpp
+            ./src/net/webrtc/rtc_send_stream.cpp
+            ./src/net/webrtc/rtc_recv_stream.cpp
+            ./src/net/webrtc/jitterbuffer.cpp
+            ./src/net/webrtc/nack_generator.cpp
+            ./src/net/http/http_client.cpp
+            ./src/net/rtprtcp/rtp_packet.cpp
+            ./src/net/rtprtcp/rtp_h264_pack.cpp
+            ./src/format/sdp/sdp.cpp
+            ./src/format/opus_header.cpp
+            ./src/net/stun/stun.cpp
+            ./src/utils/byte_crypto.cpp)
+
+add_dependencies(mspull openssl libsrtp)
+
+IF (APPLE)
+target_link_libraries(mspull pthread dl z m srtp2 ssl crypto uv)
+ELSEIF (UNIX)
+target_link_libraries(mspull pthread rt dl z m srtp2 ssl crypto uv)
+ENDIF ()
+
 
 add_subdirectory(src/tools)

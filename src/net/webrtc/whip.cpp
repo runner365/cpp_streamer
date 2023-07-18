@@ -233,7 +233,7 @@ void Whip::OnHttpRead(int ret, std::shared_ptr<HttpClientResponse> resp_ptr) {
 }
 
 void Whip::OnState(const std::string& type, const std::string& value) {
-    LogInfof(logger_, "whip state subpath:%s, type:%s, value:%s",
+    LogDebugf(logger_, "whip state subpath:%s, type:%s, value:%s",
             subpath_.c_str(), type.c_str(), value.c_str());
 
     if (type == "dtls" && value == "ready") {

@@ -28,13 +28,13 @@ typedef enum
     BROADCASTER_DONE
 } BROADCASTER_STATE;
 
-class MediaSoupBroadcaster : public CppStreamerInterface , public HttpClientCallbackI, public PCStateReportI
+class MsPush : public CppStreamerInterface , public HttpClientCallbackI, public PCStateReportI
 {
 friend void SourceBroadcasterData(uv_async_t *handle);
 
 public:
-    MediaSoupBroadcaster();
-    virtual ~MediaSoupBroadcaster();
+    MsPush();
+    virtual ~MsPush();
 
 public:
     virtual std::string StreamerName() override;

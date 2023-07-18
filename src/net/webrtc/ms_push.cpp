@@ -1,4 +1,4 @@
-#include "mediasoup_broadcaster.hpp"
+#include "ms_push.hpp"
 #include "uuid.hpp"
 #include <uv.h>
 #include <sstream>
@@ -7,12 +7,12 @@
 #include <stdio.h>
 
 void* make_mspush_streamer() {
-    cpp_streamer::MediaSoupBroadcaster* ms = new cpp_streamer::MediaSoupBroadcaster();
+    cpp_streamer::MsPush* ms = new cpp_streamer::MsPush();
     return ms;
 }
 
 void destroy_mspush_streamer(void* streamer) {
-    cpp_streamer::MediaSoupBroadcaster* ms = (cpp_streamer::MediaSoupBroadcaster*)streamer;
+    cpp_streamer::MsPush* ms = (cpp_streamer::MsPush*)streamer;
     delete ms;
 }
 
@@ -22,11 +22,11 @@ namespace cpp_streamer
 #define MEDIASOUP_PUSH_NAME "mspush"
 
 void SourceBroadcasterData(uv_async_t *handle) {
-    MediaSoupBroadcaster* ms = (MediaSoupBroadcaster*)(handle->data);
+    MsPush* ms = (MsPush*)(handle->data);
     ms->HandleMediaData();
 }
 
-MediaSoupBroadcaster::MediaSoupBroadcaster()
+MsPush::MsPush()
 {
     ByteCrypto::Init();
     name_ = MEDIASOUP_PUSH_NAME;
@@ -34,9 +34,9 @@ MediaSoupBroadcaster::MediaSoupBroadcaster()
     name_ += UUID::MakeUUID();
 }
 
-MediaSoupBroadcaster::~MediaSoupBroadcaster()
+MsPush::~MsPush()
 {
-    LogInfof(logger_, "destruct mediasoup broadcaster");
+    LogInfof(logger_, "destruct mediasoup push");
     ReleaseHttpClient(hc_req_);
     ReleaseHttpClient(hc_transport_);
     ReleaseHttpClient(hc_video_prd_);
@@ -47,7 +47,7 @@ MediaSoupBroadcaster::~MediaSoupBroadcaster()
     }
 }
 
-Media_Packet_Ptr MediaSoupBroadcaster::GetMediaPacket() {
+Media_Packet_Ptr MsPush::GetMediaPacket() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     Media_Packet_Ptr pkt_ptr;
@@ -61,7 +61,7 @@ Media_Packet_Ptr MediaSoupBroadcaster::GetMediaPacket() {
     return pkt_ptr;
 }
 
-void MediaSoupBroadcaster::HandleMediaData() {
+void MsPush::HandleMediaData() {
     while(true) {
         Media_Packet_Ptr pkt_ptr = GetMediaPacket();
         if (!pkt_ptr) {
@@ -80,22 +80,22 @@ void MediaSoupBroadcaster::HandleMediaData() {
     return;
 }
 
-void MediaSoupBroadcaster::ReleaseHttpClient(HttpClient*& hc) {
+void MsPush::ReleaseHttpClient(HttpClient*& hc) {
     if (hc) {
         delete hc;
         hc = nullptr;
     }
 }
 
-std::string MediaSoupBroadcaster::StreamerName() {
+std::string MsPush::StreamerName() {
     return name_;
 }
 
-void MediaSoupBroadcaster::SetLogger(Logger* logger) {
+void MsPush::SetLogger(Logger* logger) {
     logger_ = logger;
 }
 
-int MediaSoupBroadcaster::AddSinker(CppStreamerInterface* sinker) {
+int MsPush::AddSinker(CppStreamerInterface* sinker) {
     if (!sinker) {
         return sinkers_.size();
     }
@@ -103,11 +103,11 @@ int MediaSoupBroadcaster::AddSinker(CppStreamerInterface* sinker) {
     return sinkers_.size();
 }
 
-int MediaSoupBroadcaster::RemoveSinker(const std::string& name) {
+int MsPush::RemoveSinker(const std::string& name) {
     return sinkers_.erase(name);
 }
 
-int MediaSoupBroadcaster::SourceData(Media_Packet_Ptr pkt_ptr) {
+int MsPush::SourceData(Media_Packet_Ptr pkt_ptr) {
     std::lock_guard<std::mutex> lock(mutex_);
     Media_Packet_Ptr new_ptr = pkt_ptr->copy();
 
@@ -118,7 +118,7 @@ int MediaSoupBroadcaster::SourceData(Media_Packet_Ptr pkt_ptr) {
     return (int)packet_queue_.size();
 }
 
-void MediaSoupBroadcaster::StartNetwork(const std::string& url, void* loop_handle) {
+void MsPush::StartNetwork(const std::string& url, void* loop_handle) {
     if (pc_) {
         delete pc_;
         pc_ = nullptr;
@@ -136,7 +136,7 @@ void MediaSoupBroadcaster::StartNetwork(const std::string& url, void* loop_handl
     return;
 }
 
-void MediaSoupBroadcaster::BroadCasterRequest() {
+void MsPush::BroadCasterRequest() {
     std::map<std::string, std::string> headers;
     hc_req_ = new HttpClient(loop_, host_, port_, this, logger_, true);
 
@@ -160,7 +160,7 @@ void MediaSoupBroadcaster::BroadCasterRequest() {
     hc_req_->Post(subpath.str(), headers, req_json.dump());
 }
 
-void MediaSoupBroadcaster::TransportRequest() {
+void MsPush::TransportRequest() {
     std::map<std::string, std::string> headers;
     hc_transport_ = new HttpClient(loop_, host_, port_, this, logger_, true);
 
@@ -179,7 +179,7 @@ void MediaSoupBroadcaster::TransportRequest() {
     hc_transport_->Post(subpath.str(), headers, req_json.dump());
 }
 
-void MediaSoupBroadcaster::TransportConnectRequest() {
+void MsPush::TransportConnectRequest() {
     std::map<std::string, std::string> headers;
     hc_trans_connect_ = new HttpClient(loop_, host_, port_, this, logger_, true);
 
@@ -212,7 +212,7 @@ void MediaSoupBroadcaster::TransportConnectRequest() {
     hc_trans_connect_->Post(subpath.str(), headers, req_json.dump().c_str());
 }
 
-void MediaSoupBroadcaster::VideoProduceRequest() {
+void MsPush::VideoProduceRequest() {
     std::map<std::string, std::string> headers;
     hc_video_prd_ = new HttpClient(loop_, host_, port_, this, logger_, true);
 
@@ -237,7 +237,7 @@ void MediaSoupBroadcaster::VideoProduceRequest() {
     hc_video_prd_->Post(subpath.str(), headers, req_json.dump().c_str());
 }
 
-void MediaSoupBroadcaster::AudioProduceRequest() {
+void MsPush::AudioProduceRequest() {
     std::map<std::string, std::string> headers;
     hc_audio_prd_ = new HttpClient(loop_, host_, port_, this, logger_, true);
 
@@ -262,7 +262,7 @@ void MediaSoupBroadcaster::AudioProduceRequest() {
     hc_audio_prd_->Post(subpath.str(), headers, req_json.dump().c_str());
 }
 
-void MediaSoupBroadcaster::AddOption(const std::string& key, const std::string& value) {
+void MsPush::AddOption(const std::string& key, const std::string& value) {
     auto iter = options_.find(key);
     if (iter == options_.end()) {
         std::stringstream ss;
@@ -273,11 +273,11 @@ void MediaSoupBroadcaster::AddOption(const std::string& key, const std::string& 
     LogInfof(logger_, "set mediaspu broadcaster options key:%s, value:%s", key.c_str(), value.c_str());
 }
 
-void MediaSoupBroadcaster::SetReporter(StreamerReport* reporter) {
+void MsPush::SetReporter(StreamerReport* reporter) {
     report_ = reporter;
 }
 
-bool MediaSoupBroadcaster::GetHostInfoByUrl(const std::string& url, std::string& host, uint16_t& port, std::string& roomId, std::string& userId) {
+bool MsPush::GetHostInfoByUrl(const std::string& url, std::string& host, uint16_t& port, std::string& roomId, std::string& userId) {
     const std::string https_scheme("https://");
     std::string hostUrl(url);
 
@@ -346,7 +346,7 @@ bool MediaSoupBroadcaster::GetHostInfoByUrl(const std::string& url, std::string&
     return true;
 }
 
-void MediaSoupBroadcaster::OnHttpRead(int ret, std::shared_ptr<HttpClientResponse> resp_ptr) {
+void MsPush::OnHttpRead(int ret, std::shared_ptr<HttpClientResponse> resp_ptr) {
     if (ret < 0) {
         LogInfof(logger_, "http request ret:%d", ret);
         return;
@@ -366,7 +366,7 @@ void MediaSoupBroadcaster::OnHttpRead(int ret, std::shared_ptr<HttpClientRespons
 
 }
 
-void MediaSoupBroadcaster::HandleAudioProduceResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
+void MsPush::HandleAudioProduceResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
     std::string data_str(resp_ptr->data_.Data(), resp_ptr->data_.DataLen());
     LogInfof(logger_, "http audio produce response state:%d, resp:%s", 
             resp_ptr->status_code_, data_str.c_str());
@@ -378,7 +378,7 @@ void MediaSoupBroadcaster::HandleAudioProduceResponse(std::shared_ptr<HttpClient
     Report("audio_produce", "ready");
 }
 
-void MediaSoupBroadcaster::HandleVideoProduceResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
+void MsPush::HandleVideoProduceResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
     std::string data_str(resp_ptr->data_.Data(), resp_ptr->data_.DataLen());
     LogInfof(logger_, "http video produce response state:%d, resp:%s", 
             resp_ptr->status_code_, data_str.c_str());
@@ -390,7 +390,7 @@ void MediaSoupBroadcaster::HandleVideoProduceResponse(std::shared_ptr<HttpClient
     AudioProduceRequest();
 }
 
-void MediaSoupBroadcaster::HandleTransportConnectResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
+void MsPush::HandleTransportConnectResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
     std::string data_str(resp_ptr->data_.Data(), resp_ptr->data_.DataLen());
     LogInfof(logger_, "http transport connect response state:%d, resp:%s", 
             resp_ptr->status_code_, data_str.c_str());
@@ -402,7 +402,7 @@ void MediaSoupBroadcaster::HandleTransportConnectResponse(std::shared_ptr<HttpCl
     pc_->StartTimer();
 }
 
-void MediaSoupBroadcaster::HandleTransportResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
+void MsPush::HandleTransportResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
     std::string data_str(resp_ptr->data_.Data(), resp_ptr->data_.DataLen());
     json data_json = json::parse(data_str);
     LogInfof(logger_, "http broadcaster response state:%d, resp:%s", 
@@ -453,7 +453,7 @@ void MediaSoupBroadcaster::HandleTransportResponse(std::shared_ptr<HttpClientRes
     return;
 }
 
-void MediaSoupBroadcaster::HandleBroadCasterResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
+void MsPush::HandleBroadCasterResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
     if (resp_ptr->status_code_ != 200) {
         std::string data_str(resp_ptr->data_.Data(), resp_ptr->data_.DataLen());
         LogErrorf(logger_, "http broadcaster response state:%d, resp:%s", 
@@ -468,7 +468,7 @@ void MediaSoupBroadcaster::HandleBroadCasterResponse(std::shared_ptr<HttpClientR
     TransportRequest();
 }
 
-void MediaSoupBroadcaster::OnState(const std::string& type, const std::string& value) {
+void MsPush::OnState(const std::string& type, const std::string& value) {
     LogDebugf(logger_, "mediasoup state type:%s, value:%s",
             type.c_str(), value.c_str());
     if (type == "dtls" && value == "ready") {
@@ -481,13 +481,13 @@ void MediaSoupBroadcaster::OnState(const std::string& type, const std::string& v
     Report(type, value);
 }
 
-void MediaSoupBroadcaster::Report(const std::string& type, const std::string& value) {
+void MsPush::Report(const std::string& type, const std::string& value) {
     if (report_) {
         report_->OnReport(name_, type, value);
     }
 }
 
-bool MediaSoupBroadcaster::GetVideoRtpParameters(json& rtp_parameters_json) {
+bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
     rtp_parameters_json["mid"] = std::to_string(pc_->GetVideoMid());
 
     /*start: codecs*/
@@ -639,7 +639,7 @@ bool MediaSoupBroadcaster::GetVideoRtpParameters(json& rtp_parameters_json) {
     return true;
 }
 
-bool MediaSoupBroadcaster::GetAudioRtpParameters(json& rtp_parameters_json) {
+bool MsPush::GetAudioRtpParameters(json& rtp_parameters_json) {
     rtp_parameters_json["mid"] = std::to_string(pc_->GetAudioMid());
 
     /*start: codecs*/

@@ -377,11 +377,11 @@ int PeerConnection::HandleRtcpSr(uint8_t* data, int len) {
     try {
         RtcpSrPacket* rr_pkt = RtcpSrPacket::Parse(data, len);
         uint32_t ssrc = rr_pkt->GetSsrc();
-        if (ssrc == video_recv_stream_->GetSsrc()) {
+        if (video_recv_stream_ && ssrc == video_recv_stream_->GetSsrc()) {
             video_recv_stream_->HandleRtcpSr(rr_pkt);
         }
 
-        if (ssrc == audio_recv_stream_->GetSsrc()) {
+        if (audio_recv_stream_ && ssrc == audio_recv_stream_->GetSsrc()) {
             audio_recv_stream_->HandleRtcpSr(rr_pkt);
         }
         delete rr_pkt;
@@ -661,11 +661,11 @@ void PeerConnection::HandleRtpData(uint8_t* data, size_t len) {
             return;
         }
         uint32_t ssrc = pkt->GetSsrc();
-        if (ssrc == video_recv_stream_->GetSsrc()) {
+        if (video_recv_stream_ && ssrc == video_recv_stream_->GetSsrc()) {
             video_recv_stream_->HandleRtpPacket(pkt);
             jb_video_.InputRtpPacket(video_recv_stream_->GetClockRate(), pkt);
             return;
-        } else if (ssrc == audio_recv_stream_->GetSsrc()) {
+        } else if (audio_recv_stream_ && ssrc == audio_recv_stream_->GetSsrc()) {
             audio_recv_stream_->HandleRtpPacket(pkt);
             jb_audio_.InputRtpPacket(audio_recv_stream_->GetClockRate(), pkt);
             return;
