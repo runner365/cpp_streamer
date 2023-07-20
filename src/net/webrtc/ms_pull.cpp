@@ -306,6 +306,97 @@ void MsPull::HandleTransportConnectResponse(std::shared_ptr<HttpClientResponse> 
     pc_->StartTimer();
 }
 
+void MsPull::ParseVideoConsume(const std::string& data) {
+    auto ret_json = json::parse(data);
+
+    video_consume_id_ = ret_json["id"];
+
+    std::string prd_id = ret_json["producerId"];
+    if (prd_id != video_produce_id_) {
+        CSM_THROW_ERROR("video consume return produceId(%s) != video produceId(%s)", prd_id.c_str(), video_produce_id_.c_str());
+    }
+
+    auto rtp_parameter_json = ret_json["rtpParameters"];
+    auto encodings_json = ret_json["encodings"];
+
+    uint32_t ssrc = 0;
+    uint32_t rtx_ssrc = 0;
+    bool found_ssrc = false;
+    for(auto & encoding_json : encodings_json) {
+        auto ssrc_it = encoding_json.find("ssrc");
+        if (ssrc_it != encoding_json.end() && ssrc_it->is_number()) {
+            ssrc = (uint32_t)ssrc_it->get<int>();
+
+            auto rtx_it = encoding_json["rtx"];
+            if (rtx_it != encoding_json.end() && rtx_it->is_object()) {
+                auto rtx_ssrc_it = rtx_it->find("ssrc");
+                if (rtx_ssrc_it != rtx_it->end() && rtx_ssrc_it->is_number()) {
+                    rtx_ssrc = (uint32_t)rtx_ssrc_it->get<int>();
+                    found_ssrc = true;
+
+                }
+            }
+        }
+    }
+    if (found_ssrc) {
+        pc_->SetVideoSsrc(SDP_ANSWER, ssrc);
+        pc_->SetVideoRtxSsrc(SDP_ANSWER, rtx_ssrc);
+    } else {
+        CSM_THROW_ERROR("fail to get ssrc in video consume");
+    }
+
+    int video_mid = rtp_parameter_json["mid"];
+    pc_->SetVideoMid(SDP_ANSWER, video_mid);
+
+    auto codecs_array = rtp_parameter_json["codecs"];
+    for(auto& codec : codecs_array) {
+        std::string mimeType = codec["mimeType"];
+        String2Lower(mimeType);
+
+        if (mimeType == "video/h264") {
+            int payload_type = codec["payloadType"];
+            int clock_rate = codec["clockRate"];
+
+            pc_->SetVideoPayloadType(SDP_ANSWER, payload_type);
+            pc_->SetVideoClockRate(clock_rate);
+            auto rtcp_fb_array = codec["rtcpFeedback"];
+            for (auto rtcp_fb : rtcp_fb_array) {
+                std::string parameter = rtcp_fb["parameter"];
+                std::string type      = rtcp_fb["type"];
+
+                if (type == "nack" && parameter.empty()) {
+                    pc_->SetVideoNack(true);
+                } else if (type == "transport-cc") {
+                    pc_->SetCCType(TCC_TYPE);
+                } else if (type == "goog-remb") {
+                    pc_->SetCCType(GCC_TYPE);
+                }
+            }
+        } else if (mimeType == "video/rtx) {
+            int payload_type = codec["payloadType"];
+            pc_->SetVideoRtxPayloadType(SDP_ANSWER, payload_type);
+        } else {
+            CSM_THROW_ERROR("unkown mime type:%s", mimeType.c_str());
+        }
+    }
+
+    auto header_ext_array = ret_json["headerExtensions"];
+    for (auto& ext_item : header_ext_array) {
+        int id = ext_item["id"];
+        std::string uri = ext_item["uri"];
+        RTP_EXT_TYPE ext_type = GetRtpExtType(uri);
+        RTP_EXT_INFO info;
+        info.id = id;
+        info.type = ext_type;
+        info.uri = uri;
+        pc_->AddRtpExtInfo(id, info);
+    }
+}
+
+void MsPull::ParseAudioConsume(const std::string& data) {
+
+}
+
 void MsPull::HandleVideoConsumeResponse(std::shared_ptr<HttpClientResponse> resp_ptr) {
     std::string data_str(resp_ptr->data_.Data(), resp_ptr->data_.DataLen());
     LogInfof(logger_, "http video consume response state:%d, resp:%s", 

@@ -15,6 +15,72 @@
 
 namespace cpp_streamer
 {
+typedef enum {
+    MID_TYPE,
+    RTP_STREAMID_TYPE,
+    RP_RTP_STREAMID_TYPE,
+    ABS_SEND_TIME_TYPE,
+    TCC_WIDE_TYPE,
+    AVTEXT_FRAMEMARKING_TYPE,
+    RTP_HDREXT_FRAMEMARKING_TYPE,
+    SSRC_AUDIO_LEVEL_TYPE,
+    VIDEO_ORIENTATION_TYPE,
+    TOFFSET_TYPE,
+    ABS_CAPTURE_TIME_TYPE
+} RTP_EXT_TYPE;
+
+inline RTP_EXT_TYPE GetRtpExtType(const std::string& uri) {
+    RTP_EXT_TYPE ret_type;
+    switch(uri) {
+        case "urn:ietf:params:rtp-hdrext:sdes:mid":
+            ret_type = MID_TYPE;
+            break;
+        case "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id":
+            ret_type = RTP_STREAMID_TYPE;
+            break;
+        case "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id":
+            ret_type = RP_RTP_STREAMID_TYPE;
+            break;
+        case "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time":
+            ret_type = ABS_SEND_TIME_TYPE;
+            break;
+        case "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01":
+            ret_type = TCC_WIDE_TYPE;
+            break;
+        case "urn:ietf:params:rtp-hdrext:ssrc-audio-level":
+            ret_type = SSRC_AUDIO_LEVEL_TYPE;
+            break;
+        case "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07":
+            ret_type = AVTEXT_FRAMEMARKING_TYPE;
+            break;
+        case "urn:ietf:params:rtp-hdrext:framemarking":
+            ret_type = RTP_HDREXT_FRAMEMARKING_TYPE;
+            break;
+        case "urn:3gpp:video-orientation":
+            ret_type = VIDEO_ORIENTATION_TYPE;
+            break;
+        case "urn:ietf:params:rtp-hdrext:toffset":
+            ret_type = TOFFSET_TYPE;
+            break;
+        case "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time":
+            ret_type = ABS_CAPTURE_TIME_TYPE;
+            break;
+        default:
+            CSM_THROW_ERROR("unknown rtp ext type:%s", uri.c_str());
+    }
+    return ret_type;
+}
+
+typedef struct RTP_EXT_INFO_S {
+    int id;
+    RTP_EXT_TYPE type;
+    std::string uri;
+} RTP_EXT_INFO;
+
+typedef enum {
+    GCC_TYPE,
+    TCC_TYPE
+} CC_TYPE;
 
 typedef enum {
     DIRECTION_UNKNOWN,
@@ -29,6 +95,11 @@ typedef enum {
     PC_STUN_DONE_STATE,
     PC_DTLS_DONE_STATE
 } PC_STATE;
+
+typedef enum {
+    SDP_OFFER,
+    SDP_ANSWER
+} SDP_TYPE;
 
 class PCStateReportI
 {
@@ -61,20 +132,48 @@ public:
     void UpdatePcState(PC_STATE pc_state);
 
 public:
-    int GetVideoMid();
-    int GetAudioMid();
-    uint32_t GetVideoSsrc();
-    uint32_t GetVideoRtxSsrc();
-    uint32_t GetAudioSsrc();
-    int GetVideoPayloadType();
-    int GetVideoRtxPayloadType();
-    int GetAudioPayloadType();
-    std::string GetVideoCodecType();
-    std::string GetAudioCodecType();
+    int GetVideoMid(SDP_TYPE type);
+    void SetVideoMid(SDP_TYPE type, int mid);
+
+    int GetAudioMid(SDP_TYPE type);
+    void SetAudioMid(SDP_TYPE type, int mid);
+
+    void SetVideoSsrc(SDP_TYPE type, uint32_t ssrc);
+    uint32_t GetVideoSsrc(SDP_TYPE type);
+
+    void SetVideoRtxSsrc(SDP_TYPE type, uint32_t ssrc);
+    uint32_t GetVideoRtxSsrc(SDP_TYPE type);
+
+    void SetAudioSsrc(SDP_TYPE type, uint32_t ssrc);
+    uint32_t GetAudioSsrc(SDP_TYPE type);
+
+    void SetVideoPayloadType(SDP_TYPE type, int payloadType);
+    int GetVideoPayloadType(SDP_TYPE type);
+
+    void SetVideoRtxPayloadType(SDP_TYPE type, int payloadType);
+    int GetVideoRtxPayloadType(SDP_TYPE type);
+
+    void SetAudioPayloadType(SDP_TYPE type, int payloadType);
+    int GetAudioPayloadType(SDP_TYPE type);
+
+    std::string GetVideoCodecType(SDP_TYPE type);
+    std::string GetAudioCodecType(SDP_TYPE type);
+
     void SetVideoRtx(bool rtx);
     bool GetVideoRtx();
+
     int GetVideoClockRate();
+    void SetVideoClockRate(int clock_rate);
+
     int GetAudioClockRate();
+    void SetAudioClockRate(int clock_rate);
+
+    void SetVideoNack(bool enable, int payload_type);
+    bool GetVideoNack(int payload_type);
+
+    void SetCCType(CC_TYPE type);
+    CC_TYPE GetCCType();
+    void AddRtpExtInfo(int id, const RTP_EXT_INFO& info);
     std::vector<RtcpFbInfo> GetVideoRtcpFbInfo();
     std::vector<RtcpFbInfo> GetAudioRtcpFbInfo();
     void GetHeaderExternId(int& offset_id, int& abs_send_time_id,
@@ -118,7 +217,6 @@ public:
 private:
     std::string GetDirectionString(WebRtcSdpDirection direction_type);
     void Report(const std::string& key, const std::string& value);
-
 
 private:
     void CreateSendStream();
@@ -190,6 +288,9 @@ private:
 
 private:
     int64_t last_rr_ms_ = -1;
+
+private://for rtp extern header
+    std::map<int, RTP_EXT_INFO> rtp_ext_headers_;
 };
 
 }

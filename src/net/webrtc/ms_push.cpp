@@ -488,7 +488,7 @@ void MsPush::Report(const std::string& type, const std::string& value) {
 }
 
 bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
-    rtp_parameters_json["mid"] = std::to_string(pc_->GetVideoMid());
+    rtp_parameters_json["mid"] = std::to_string(pc_->GetVideoMid(SDP_OFFER));
 
     /*start: codecs*/
     auto codecs_json = json::array();
@@ -497,10 +497,10 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
     auto rtx_codec_json = json::object();
 
     std::stringstream h264_mimetype;
-    h264_mimetype << "video/" << pc_->GetVideoCodecType();
+    h264_mimetype << "video/" << pc_->GetVideoCodecType(SDP_OFFER);
 
     h264_codec_json["mimeType"]    = h264_mimetype.str();
-    h264_codec_json["payloadType"] = pc_->GetVideoPayloadType();
+    h264_codec_json["payloadType"] = pc_->GetVideoPayloadType(SDP_OFFER);
     h264_codec_json["clockRate"]   = pc_->GetVideoClockRate();
 
     codec_params_json["packetization-mode"] = 1;
@@ -516,7 +516,7 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
         if (fb_info.attr_string == "ccm") {
             rtcpfb_json["parameter"] = "fir";
         } else if (fb_info.attr_string == "nack") {
-            if (fb_info.payload_type == pc_->GetVideoRtxPayloadType()) {
+            if (fb_info.payload_type == pc_->GetVideoRtxPayloadType(SDP_OFFER)) {
                 rtcpfb_json["parameter"] = "fir";
             } else {
                 rtcpfb_json["parameter"] = "";
@@ -531,9 +531,9 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
 
     auto rtx_codec_param_json = json::object();
     rtx_codec_json["mimeType"] = "video/rtx";
-    rtx_codec_json["payloadType"] = pc_->GetVideoRtxPayloadType();
+    rtx_codec_json["payloadType"] = pc_->GetVideoRtxPayloadType(SDP_OFFER);
     rtx_codec_json["clockRate"]   = pc_->GetVideoClockRate();
-    rtx_codec_param_json["apt"]   = pc_->GetVideoPayloadType();
+    rtx_codec_param_json["apt"]   = pc_->GetVideoPayloadType(SDP_OFFER);
 
     rtx_codec_json["parameters"]  = rtx_codec_param_json;
     rtx_codec_json["rtcpFeedback"] = json::array();
@@ -620,7 +620,7 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
     auto encodings_array_json = json::array();
     auto video_encoding_json  = json::object();
     auto rtx_json = json::object();
-    rtx_json["ssrc"] = pc_->GetVideoRtxSsrc();
+    rtx_json["ssrc"] = pc_->GetVideoRtxSsrc(SDP_OFFER);
     video_encoding_json["ssrc"] = pc_->GetVideoSsrc();
     video_encoding_json["dtx"]  = false;
     video_encoding_json["rtx"]  = rtx_json;
@@ -640,17 +640,17 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
 }
 
 bool MsPush::GetAudioRtpParameters(json& rtp_parameters_json) {
-    rtp_parameters_json["mid"] = std::to_string(pc_->GetAudioMid());
+    rtp_parameters_json["mid"] = std::to_string(pc_->GetAudioMid(SDP_OFFER));
 
     /*start: codecs*/
     auto codecs_json = json::array();
     auto opus_codec_json = json::object();
 
     std::stringstream opus_mimetype;
-    opus_mimetype << "audio/" << pc_->GetAudioCodecType();
+    opus_mimetype << "audio/" << pc_->GetAudioCodecType(SDP_OFFER);
 
     opus_codec_json["mimeType"]    = opus_mimetype.str();
-    opus_codec_json["payloadType"] = pc_->GetAudioPayloadType();
+    opus_codec_json["payloadType"] = pc_->GetAudioPayloadType(SDP_OFFER);
     opus_codec_json["clockRate"]   = pc_->GetAudioClockRate();
     opus_codec_json["channels"] = 2;
 
@@ -737,7 +737,7 @@ bool MsPush::GetAudioRtpParameters(json& rtp_parameters_json) {
     /*start: encodings*/
     auto encodings_array_json = json::array();
     auto audio_encoding_json  = json::object();
-    audio_encoding_json["ssrc"] = pc_->GetAudioSsrc();
+    audio_encoding_json["ssrc"] = pc_->GetAudioSsrc(SDP_OFFER);
     audio_encoding_json["dtx"]  = false;
     encodings_array_json.push_back(audio_encoding_json);
 

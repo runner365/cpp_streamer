@@ -48,6 +48,10 @@ public:
     virtual void OnState(const std::string& type, const std::string& value) override;
 
 private:
+    void ParseVideoConsume(const std::string& data);
+    void ParseAudioConsume(const std::string& data);
+
+private:
     void ReleaseHttpClient(HttpClient*& hc);
     bool GetHostInfoByUrl(const std::string& url, 
             std::string& host, 
@@ -95,6 +99,8 @@ private:
     std::string transport_id_;
     std::string video_produce_id_;
     std::string audio_produce_id_;
+    std::string video_consume_id_;
+    std::string audio_consume_id_;
 
 private:
     std::string ice_pwd_;
