@@ -15,6 +15,7 @@
 
 #include <cstring>
 #include <sstream>
+#include <set>
 
 namespace cpp_streamer
 {
@@ -751,43 +752,61 @@ void PeerConnection::SendRtcpPacket(uint8_t* data, size_t len) {
     udp_client_->TryRead();
 }
 
-void PeerConnection::CreateRecvStream() {
+void PeerConnection::CreateVideoRecvStream() {
     bool video_nack = answer_sdp_.IsVideoNackEnable();
-    bool audio_nack = answer_sdp_.IsAudioNackEnable();
+    uint32_t ssrc = answer_sdp_.GetVideoSsrc();
+    int payload_type = answer_sdp_.GetVideoPayloadType();
+    uint32_t rtx_ssrc    = answer_sdp_.GetVideoRtxSsrc();
+    uint8_t rtx_payload  = answer_sdp_.GetVideoRtxPayloadType();
+    int clock_rate = answer_sdp_.GetVideoClockRate();
+    
+    has_rtx_ = answer_sdp_.IsVideoRtxEnable();
 
-    LogInfof(logger_, "create recv stream video ssrc:%u, audio ssrc:%u",
-            answer_sdp_.GetVideoSsrc(), answer_sdp_.GetAudioSsrc());
+    LogInfof(logger_, "create recv stream video ssrc:%u, nack:%s, pt:%d, rtx pt:%d, rtx ssrc:%u, has rtx:%s, clock rate:%d",
+            ssrc, video_nack ? "enable" : "disable",
+            payload_type, rtx_payload, rtx_ssrc,
+            has_rtx_ ? "enable" : "disable", clock_rate);
     if (answer_sdp_.GetVideoSsrc() > 0) {
-        has_rtx_ = answer_sdp_.IsVideoRtxEnable();
-        uint32_t rtx_ssrc    = answer_sdp_.GetVideoRtxSsrc();
-        uint8_t rtx_payload  = answer_sdp_.GetVideoRtxPayloadType();
         if (has_rtx_ && (rtx_payload > 0) && (rtx_ssrc > 0)) {
             video_recv_stream_ = new RtcRecvStream(MEDIA_VIDEO_TYPE, 
-                answer_sdp_.GetVideoSsrc(),
-                answer_sdp_.GetVideoPayloadType(),
-                answer_sdp_.GetVideoClockRate(),
+                ssrc, payload_type, clock_rate,
                 video_nack, rtx_payload, rtx_ssrc, this,
                 logger_, loop_);
            
         } else {
-                video_recv_stream_ = new RtcRecvStream(MEDIA_VIDEO_TYPE, 
-                answer_sdp_.GetVideoSsrc(),
-                answer_sdp_.GetVideoPayloadType(),
-                answer_sdp_.GetVideoClockRate(),
+            video_recv_stream_ = new RtcRecvStream(MEDIA_VIDEO_TYPE, 
+                ssrc, payload_type, clock_rate, 
                 video_nack, this, logger_, loop_);
         }
         video_recv_stream_->RequestKeyFrame(-1);
     }
 
+
+}
+
+void PeerConnection::CreateAudioRecvStream() {
+    bool audio_nack      = answer_sdp_.IsAudioNackEnable();
+    uint32_t ssrc        = answer_sdp_.GetAudioSsrc();
+    int payload_type     = answer_sdp_.GetAudioPayloadType();
+    int clock_rate       = answer_sdp_.GetAudioClockRate();
+
+    LogInfof(logger_, "create recv stream audio ssrc:%u, nack:%s, pt:%d, clock rate:%d",
+            ssrc, audio_nack ? "enable" : "disable",
+            payload_type, clock_rate);
+
     if (answer_sdp_.GetAudioSsrc() > 0) {
         audio_recv_stream_ = new RtcRecvStream(MEDIA_AUDIO_TYPE, 
-                answer_sdp_.GetAudioSsrc(),
-                answer_sdp_.GetAudioPayloadType(),
-                answer_sdp_.GetAudioClockRate(),
+                ssrc, payload_type, clock_rate,
                 audio_nack, this, logger_, loop_);
         audio_recv_stream_->SetChannel(answer_sdp_.channel_);
     }
 
+    return;
+}
+
+void PeerConnection::CreateRecvStream() {
+    CreateVideoRecvStream();
+    CreateAudioRecvStream();
     return;
 
 }
@@ -1181,8 +1200,30 @@ uint32_t PeerConnection::GetVideoSsrc(SDP_TYPE type) {
 
 void PeerConnection::SetVideoSsrc(SDP_TYPE type, uint32_t ssrc) {
     if (type == SDP_OFFER) {
+        SSRCInfo video_ssrc_info = {
+            .ssrc         = ssrc,
+            .is_video     = true,
+            .is_rtx       = false,
+            .msid         = offer_sdp_.v_msid_,
+            .msid_appdata = offer_sdp_.v_msid_appdata_,
+            .cname        = offer_sdp_.video_cname_,
+            .rtx_ssrc     = offer_sdp_.video_rtx_ssrc_
+        };
+        offer_sdp_.ssrc_info_map_[offer_sdp_.video_ssrc_] = video_ssrc_info;
+
         offer_sdp_.video_ssrc_ = ssrc;
     } else {
+        SSRCInfo video_ssrc_info = {
+            .ssrc         = ssrc,
+            .is_video     = true,
+            .is_rtx       = false,
+            .msid         = answer_sdp_.v_msid_,
+            .msid_appdata = answer_sdp_.v_msid_appdata_,
+            .cname        = answer_sdp_.video_cname_,
+            .rtx_ssrc     = answer_sdp_.video_rtx_ssrc_
+        };
+        answer_sdp_.ssrc_info_map_[answer_sdp_.video_ssrc_] = video_ssrc_info;
+
         answer_sdp_.video_ssrc_ = ssrc;
     }
 }
@@ -1196,8 +1237,28 @@ uint32_t PeerConnection::GetVideoRtxSsrc(SDP_TYPE type) {
 
 void PeerConnection::SetVideoRtxSsrc(SDP_TYPE type, uint32_t ssrc) {
     if (type == SDP_OFFER) {
+        SSRCInfo rtx_ssrc_info = {
+            .ssrc         = ssrc,
+            .is_video     = true,
+            .is_rtx       = true,
+            .msid         = offer_sdp_.v_msid_,
+            .msid_appdata = offer_sdp_.v_msid_appdata_,
+            .cname        = offer_sdp_.video_cname_,
+            .rtx_ssrc     = offer_sdp_.video_ssrc_
+        };
+        offer_sdp_.ssrc_info_map_[ssrc] = rtx_ssrc_info;
         offer_sdp_.video_rtx_ssrc_ = ssrc;
     } else {
+        SSRCInfo rtx_ssrc_info = {
+            .ssrc         = ssrc,
+            .is_video     = true,
+            .is_rtx       = true,
+            .msid         = answer_sdp_.v_msid_,
+            .msid_appdata = answer_sdp_.v_msid_appdata_,
+            .cname        = answer_sdp_.video_cname_,
+            .rtx_ssrc     = answer_sdp_.video_ssrc_
+        };
+        answer_sdp_.ssrc_info_map_[ssrc] = rtx_ssrc_info;
         answer_sdp_.video_rtx_ssrc_ = ssrc;
     }
 }
@@ -1211,27 +1272,46 @@ uint32_t PeerConnection::GetAudioSsrc(SDP_TYPE type) {
 
 void PeerConnection::SetAudioSsrc(SDP_TYPE type, uint32_t ssrc) {
     if (type == SDP_OFFER) {
+        SSRCInfo audio_ssrc_info = {
+            .ssrc         = ssrc,
+            .is_video     = false,
+            .is_rtx       = false,
+            .msid         = offer_sdp_.a_msid_,
+            .msid_appdata = offer_sdp_.a_msid_appdata_,
+            .cname        = offer_sdp_.audio_cname_,
+            .rtx_ssrc     = 0
+        };
+        offer_sdp_.ssrc_info_map_[ssrc] = audio_ssrc_info;
         offer_sdp_.audio_ssrc_ = ssrc;
     } else {
+        SSRCInfo audio_ssrc_info = {
+            .ssrc         = ssrc,
+            .is_video     = false,
+            .is_rtx       = false,
+            .msid         = answer_sdp_.a_msid_,
+            .msid_appdata = answer_sdp_.a_msid_appdata_,
+            .cname        = answer_sdp_.audio_cname_,
+            .rtx_ssrc     = 0
+        };
+        answer_sdp_.ssrc_info_map_[ssrc] = audio_ssrc_info;
         answer_sdp_.audio_ssrc_ = ssrc;
     }
 }
 
-void PeerConnection::SetVideoRtx(bool rtx) {
-    auto iter = offer_sdp_.ssrc_info_map_.find(offer_sdp_.video_rtx_ssrc_);
-    if (iter == offer_sdp_.ssrc_info_map_.end()) {
-        CSM_THROW_ERROR("video rtx ssrc is not initied");
+bool PeerConnection::GetVideoRtx(SDP_TYPE type) {
+    if (type == SDP_OFFER) {
+        auto iter = offer_sdp_.ssrc_info_map_.find(offer_sdp_.video_rtx_ssrc_);
+        if (iter == offer_sdp_.ssrc_info_map_.end()) {
+            CSM_THROW_ERROR("offer video rtx ssrc is not initied");
+        }
+        return iter->second.is_rtx;
+    } else {
+        auto iter = answer_sdp_.ssrc_info_map_.find(answer_sdp_.video_rtx_ssrc_);
+        if (iter == answer_sdp_.ssrc_info_map_.end()) {
+            CSM_THROW_ERROR("answer video rtx ssrc is not initied");
+        }
+        return iter->second.is_rtx;
     }
-    iter->second.is_rtx = rtx;
-}
-
-bool PeerConnection::GetVideoRtx() {
-    auto iter = offer_sdp_.ssrc_info_map_.find(offer_sdp_.video_rtx_ssrc_);
-    if (iter == offer_sdp_.ssrc_info_map_.end()) {
-        CSM_THROW_ERROR("video rtx ssrc is not initied");
-    }
- 
-    return iter->second.is_rtx;
 }
 
 int PeerConnection::GetVideoPayloadType(SDP_TYPE type) {
@@ -1310,7 +1390,7 @@ int PeerConnection::GetAudioPayloadType(SDP_TYPE type) {
     return -1;
 }
 
-void PeerConnection::SetAudioPayloadType(SDP_TYPE type int payloadType) {
+void PeerConnection::SetAudioPayloadType(SDP_TYPE type, int payloadType) {
     RtpMapInfo opusRtpInfo = {
         .payload_type = payloadType,
         .codec_type   = "opus",
@@ -1355,42 +1435,198 @@ std::string PeerConnection::GetAudioCodecType(SDP_TYPE type) {
     return "";
 }
 
-int PeerConnection::GetVideoClockRate() {
-    for(auto& rtp_item : offer_sdp_.video_rtp_map_infos_) {
-        if (rtp_item.second.codec_type != "rtx") {
+int PeerConnection::GetVideoClockRate(SDP_TYPE type) {
+    if (type == SDP_OFFER) {
+        for(auto& rtp_item : offer_sdp_.video_rtp_map_infos_) {
+            if (rtp_item.second.codec_type != "rtx") {
+                return rtp_item.second.clock_rate;
+            }
+        }
+    } else {
+        for(auto& rtp_item : answer_sdp_.video_rtp_map_infos_) {
+            if (rtp_item.second.codec_type != "rtx") {
+                return rtp_item.second.clock_rate;
+            }
+        }
+    }
+    return -1;
+}
+
+void PeerConnection::SetVideoClockRate(SDP_TYPE type, int clock_rate) {
+    if (type == SDP_OFFER) {
+        for(auto& rtp_item : offer_sdp_.video_rtp_map_infos_) {
+            if (rtp_item.second.codec_type != "rtx") {
+                rtp_item.second.clock_rate = clock_rate;
+            }
+        }
+    } else {
+        for(auto& rtp_item : answer_sdp_.video_rtp_map_infos_) {
+            if (rtp_item.second.codec_type != "rtx") {
+                rtp_item.second.clock_rate = clock_rate;
+            }
+        }
+    }
+}
+
+int PeerConnection::GetAudioClockRate(SDP_TYPE type) {
+    if (type == SDP_OFFER) {
+        for(auto& rtp_item : offer_sdp_.audio_rtp_map_infos_) {
+            return rtp_item.second.clock_rate;
+        }
+    } else {
+        for(auto& rtp_item : answer_sdp_.audio_rtp_map_infos_) {
             return rtp_item.second.clock_rate;
         }
     }
     return -1;
 }
 
-void PeerConnection::SetVideoClockRate(int clock_rate) {
-    for(auto& rtp_item : offer_sdp_.video_rtp_map_infos_) {
-        if (rtp_item.second.codec_type != "rtx") {
+
+void PeerConnection::SetAudioClockRate(SDP_TYPE type, int clock_rate) {
+    if (type == SDP_OFFER) {
+        for(auto& rtp_item : offer_sdp_.audio_rtp_map_infos_) {
+            rtp_item.second.clock_rate = clock_rate;
+        }
+    } else {
+        for(auto& rtp_item : answer_sdp_.audio_rtp_map_infos_) {
             rtp_item.second.clock_rate = clock_rate;
         }
     }
 }
 
-int PeerConnection::GetAudioClockRate() {
-    for(auto& rtp_item : offer_sdp_.audio_rtp_map_infos_) {
-        return rtp_item.second.clock_rate;
+void PeerConnection::SetVideoNack(SDP_TYPE type, bool enable, int payload_type) {
+    if (type == SDP_OFFER) {
+        bool found = false;
+        for (auto& rtcpfb_item : offer_sdp_.video_rtcpfb_vec_) {
+            if (rtcpfb_item.payload_type == payload_type
+                && rtcpfb_item.attr_string == "nack") {
+                found = true;
+            }
+        }
+        if (!found) {
+            RtcpFbInfo info;
+            info.payload_type = payload_type;
+            info.attr_string  = "nack";
+            offer_sdp_.video_rtcpfb_vec_.push_back(info);
+        }
+    } else {
+        bool found = false;
+        for (auto& rtcpfb_item : answer_sdp_.video_rtcpfb_vec_) {
+            if (rtcpfb_item.payload_type == payload_type
+                && rtcpfb_item.attr_string == "nack") {
+                found = true;
+            }
+        }
+        if (!found) {
+            RtcpFbInfo info;
+            info.payload_type = payload_type;
+            info.attr_string  = "nack";
+            answer_sdp_.video_rtcpfb_vec_.push_back(info);
+        }
     }
-    return -1;
 }
 
+bool PeerConnection::GetVideoNack(SDP_TYPE type, int payload_type) {
+    if (type == SDP_OFFER) {
+        for (auto& rtcpfb_item : offer_sdp_.video_rtcpfb_vec_) {
+            if (rtcpfb_item.payload_type == payload_type
+                && rtcpfb_item.attr_string == "nack") {
+                return true;
+            }
+        }
+        return false;
+    } else {
+        for (auto& rtcpfb_item : answer_sdp_.video_rtcpfb_vec_) {
+            if (rtcpfb_item.payload_type == payload_type
+                && rtcpfb_item.attr_string == "nack") {
+                return true;
+            }
+        }
+        return false;
+    }
 
-void PeerConnection::SetAudioClockRate(int clock_rate) {
-    for(auto& rtp_item : offer_sdp_.audio_rtp_map_infos_) {
-        rtp_item.second.clock_rate = clock_rate;
+}
+
+void PeerConnection::SetCCType(SDP_TYPE type, CC_TYPE cc_type) {
+    std::string cc_type_string = (cc_type == TCC_TYPE) ? "transport-cc" : "goog-remb";
+
+    if (type == SDP_OFFER) {
+        std::set<int> pt_set;
+        auto iter = offer_sdp_.video_rtcpfb_vec_.begin();
+        while(iter != offer_sdp_.video_rtcpfb_vec_.end()) {
+            if (iter->attr_string == "transport-cc" && cc_type == TCC_TYPE) {
+                pt_set.erase(iter->payload_type);
+            } else if (iter->attr_string == "goog-remb" && cc_type == GCC_TYPE) {
+                pt_set.erase(iter->payload_type);
+            } else {
+                pt_set.insert(iter->payload_type);
+            }
+            iter++;
+        }
+        for (auto &item : pt_set) {
+            RtcpFbInfo info;
+            info.payload_type = item;
+            info.attr_string  = cc_type_string;
+            offer_sdp_.video_rtcpfb_vec_.push_back(info);
+        }
+    } else {
+        std::set<int> pt_set;
+        auto iter = answer_sdp_.video_rtcpfb_vec_.begin();
+        while(iter != answer_sdp_.video_rtcpfb_vec_.end()) {
+            if (iter->attr_string == "transport-cc" && cc_type == TCC_TYPE) {
+                pt_set.erase(iter->payload_type);
+            } else if (iter->attr_string == "goog-remb" && cc_type == GCC_TYPE) {
+                pt_set.erase(iter->payload_type);
+            } else {
+                pt_set.insert(iter->payload_type);
+            }
+            iter++;
+        }
+        for (auto &item : pt_set) {
+            RtcpFbInfo info;
+            info.payload_type = item;
+            info.attr_string  = cc_type_string;
+            answer_sdp_.video_rtcpfb_vec_.push_back(info);
+        }
     }
 }
 
-void PeerConnection::SetVideoNack(bool enable, int payload_type) {
+CC_TYPE PeerConnection::GetCCType(SDP_TYPE type) {
+    if (type == SDP_OFFER) {
+        auto iter = offer_sdp_.video_rtcpfb_vec_.begin();
+        while(iter != offer_sdp_.video_rtcpfb_vec_.end()) {
+            if (iter->attr_string == "transport-cc") {
+                return TCC_TYPE;
+            } else if (iter->attr_string == "goog-remb") {
+                return GCC_TYPE;
+            }
+            iter++;
+        }
+    } else {
+        auto iter = answer_sdp_.video_rtcpfb_vec_.begin();
+        while(iter != answer_sdp_.video_rtcpfb_vec_.end()) {
+            if (iter->attr_string == "transport-cc") {
+                return TCC_TYPE;
+            } else if (iter->attr_string == "goog-remb") {
+                return GCC_TYPE;
+            }
+            iter++;
+        }
+    }
+    return CC_UNKNOWN_TYPE;
 }
 
-bool PeerConnection::GetVideoNack(int payload_type) {
+void PeerConnection::AddRtpExtInfo(SDP_TYPE type, int id, const RTP_EXT_INFO& info) {
+    rtp_ext_headers_[id] = info;
 
+    ExtInfo ext_info;
+    ext_info.ext_id = id;
+    ext_info.desc   = info.uri;
+    if (type == SDP_OFFER) {
+        offer_sdp_.ext_map_[id]  = ext_info;
+    } else {
+        answer_sdp_.ext_map_[id] = ext_info;
+    }
 }
 
 std::vector<RtcpFbInfo> PeerConnection::GetVideoRtcpFbInfo() {

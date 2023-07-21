@@ -31,42 +31,30 @@ typedef enum {
 
 inline RTP_EXT_TYPE GetRtpExtType(const std::string& uri) {
     RTP_EXT_TYPE ret_type;
-    switch(uri) {
-        case "urn:ietf:params:rtp-hdrext:sdes:mid":
-            ret_type = MID_TYPE;
-            break;
-        case "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id":
-            ret_type = RTP_STREAMID_TYPE;
-            break;
-        case "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id":
-            ret_type = RP_RTP_STREAMID_TYPE;
-            break;
-        case "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time":
-            ret_type = ABS_SEND_TIME_TYPE;
-            break;
-        case "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01":
-            ret_type = TCC_WIDE_TYPE;
-            break;
-        case "urn:ietf:params:rtp-hdrext:ssrc-audio-level":
-            ret_type = SSRC_AUDIO_LEVEL_TYPE;
-            break;
-        case "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07":
-            ret_type = AVTEXT_FRAMEMARKING_TYPE;
-            break;
-        case "urn:ietf:params:rtp-hdrext:framemarking":
-            ret_type = RTP_HDREXT_FRAMEMARKING_TYPE;
-            break;
-        case "urn:3gpp:video-orientation":
-            ret_type = VIDEO_ORIENTATION_TYPE;
-            break;
-        case "urn:ietf:params:rtp-hdrext:toffset":
-            ret_type = TOFFSET_TYPE;
-            break;
-        case "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time":
-            ret_type = ABS_CAPTURE_TIME_TYPE;
-            break;
-        default:
-            CSM_THROW_ERROR("unknown rtp ext type:%s", uri.c_str());
+    if(uri == "urn:ietf:params:rtp-hdrext:sdes:mid") {
+        ret_type = MID_TYPE;
+    } else if (uri == "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id") {
+        ret_type = RTP_STREAMID_TYPE;
+    } else if (uri == "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id") {
+        ret_type = RP_RTP_STREAMID_TYPE;
+    } else if (uri == "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time") {
+        ret_type = ABS_SEND_TIME_TYPE;
+    } else if (uri == "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01") {
+        ret_type = TCC_WIDE_TYPE;
+    } else if (uri == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
+        ret_type = SSRC_AUDIO_LEVEL_TYPE;
+    } else if (uri == "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07") {
+        ret_type = AVTEXT_FRAMEMARKING_TYPE;
+    } else if (uri == "urn:ietf:params:rtp-hdrext:framemarking") {
+        ret_type = RTP_HDREXT_FRAMEMARKING_TYPE;
+    } else if (uri == "urn:3gpp:video-orientation") {
+        ret_type = VIDEO_ORIENTATION_TYPE;
+    } else if (uri == "urn:ietf:params:rtp-hdrext:toffset") {
+        ret_type = TOFFSET_TYPE;
+    } else if (uri == "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time") {
+        ret_type = ABS_CAPTURE_TIME_TYPE;
+    } else {
+        CSM_THROW_ERROR("unknown rtp ext type:%s", uri.c_str());
     }
     return ret_type;
 }
@@ -78,6 +66,7 @@ typedef struct RTP_EXT_INFO_S {
 } RTP_EXT_INFO;
 
 typedef enum {
+    CC_UNKNOWN_TYPE,
     GCC_TYPE,
     TCC_TYPE
 } CC_TYPE;
@@ -159,21 +148,22 @@ public:
     std::string GetVideoCodecType(SDP_TYPE type);
     std::string GetAudioCodecType(SDP_TYPE type);
 
-    void SetVideoRtx(bool rtx);
-    bool GetVideoRtx();
+    bool GetVideoRtx(SDP_TYPE type);
 
-    int GetVideoClockRate();
-    void SetVideoClockRate(int clock_rate);
+    int GetVideoClockRate(SDP_TYPE type);
+    void SetVideoClockRate(SDP_TYPE type, int clock_rate);
 
-    int GetAudioClockRate();
-    void SetAudioClockRate(int clock_rate);
+    int GetAudioClockRate(SDP_TYPE type);
+    void SetAudioClockRate(SDP_TYPE type, int clock_rate);
 
-    void SetVideoNack(bool enable, int payload_type);
-    bool GetVideoNack(int payload_type);
+    void SetVideoNack(SDP_TYPE type, bool enable, int payload_type);
+    bool GetVideoNack(SDP_TYPE type, int payload_type);
 
-    void SetCCType(CC_TYPE type);
-    CC_TYPE GetCCType();
-    void AddRtpExtInfo(int id, const RTP_EXT_INFO& info);
+    void SetCCType(SDP_TYPE type, CC_TYPE cc_type);
+    CC_TYPE GetCCType(SDP_TYPE type);
+
+    void AddRtpExtInfo(SDP_TYPE type, int id, const RTP_EXT_INFO& info);
+
     std::vector<RtcpFbInfo> GetVideoRtcpFbInfo();
     std::vector<RtcpFbInfo> GetAudioRtcpFbInfo();
     void GetHeaderExternId(int& offset_id, int& abs_send_time_id,
@@ -185,6 +175,8 @@ public:
     std::string GetVideoCName();
     std::string GetAudioCName();
     void CreateSendStream2();
+    void CreateVideoRecvStream();
+    void CreateAudioRecvStream();
 
 public:
     void SetMediaCallback(MediaCallbackI* cb) { media_cb_ = cb; }

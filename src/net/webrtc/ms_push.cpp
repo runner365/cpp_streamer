@@ -501,7 +501,7 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
 
     h264_codec_json["mimeType"]    = h264_mimetype.str();
     h264_codec_json["payloadType"] = pc_->GetVideoPayloadType(SDP_OFFER);
-    h264_codec_json["clockRate"]   = pc_->GetVideoClockRate();
+    h264_codec_json["clockRate"]   = pc_->GetVideoClockRate(SDP_OFFER);
 
     codec_params_json["packetization-mode"] = 1;
     codec_params_json["profile-level-id"]   = "42e01f";
@@ -532,7 +532,7 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
     auto rtx_codec_param_json = json::object();
     rtx_codec_json["mimeType"] = "video/rtx";
     rtx_codec_json["payloadType"] = pc_->GetVideoRtxPayloadType(SDP_OFFER);
-    rtx_codec_json["clockRate"]   = pc_->GetVideoClockRate();
+    rtx_codec_json["clockRate"]   = pc_->GetVideoClockRate(SDP_OFFER);
     rtx_codec_param_json["apt"]   = pc_->GetVideoPayloadType(SDP_OFFER);
 
     rtx_codec_json["parameters"]  = rtx_codec_param_json;
@@ -621,7 +621,7 @@ bool MsPush::GetVideoRtpParameters(json& rtp_parameters_json) {
     auto video_encoding_json  = json::object();
     auto rtx_json = json::object();
     rtx_json["ssrc"] = pc_->GetVideoRtxSsrc(SDP_OFFER);
-    video_encoding_json["ssrc"] = pc_->GetVideoSsrc();
+    video_encoding_json["ssrc"] = pc_->GetVideoSsrc(SDP_OFFER);
     video_encoding_json["dtx"]  = false;
     video_encoding_json["rtx"]  = rtx_json;
     encodings_array_json.push_back(video_encoding_json);
@@ -651,7 +651,7 @@ bool MsPush::GetAudioRtpParameters(json& rtp_parameters_json) {
 
     opus_codec_json["mimeType"]    = opus_mimetype.str();
     opus_codec_json["payloadType"] = pc_->GetAudioPayloadType(SDP_OFFER);
-    opus_codec_json["clockRate"]   = pc_->GetAudioClockRate();
+    opus_codec_json["clockRate"]   = pc_->GetAudioClockRate(SDP_OFFER);
     opus_codec_json["channels"] = 2;
 
     auto codec_params_json = json::object();
