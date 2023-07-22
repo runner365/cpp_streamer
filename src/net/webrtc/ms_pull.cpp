@@ -84,6 +84,7 @@ void MsPull::StartNetwork(const std::string& url, void* loop_handle) {
     loop_ = (uv_loop_t*)loop_handle;
 
     pc_ = new PeerConnection((uv_loop_t*)loop_handle, logger_, this);
+    pc_->SetMsPull(true);
 
     BroadCasterRequest();
     return;
@@ -286,7 +287,7 @@ void MsPull::HandleTransportResponse(std::shared_ptr<HttpClientResponse> resp_pt
     pc_->SetRemoteUdpAddress(candidate_ip_, candidate_port_);
     pc_->SetFingerPrintsSha256(alg_value_);
 
-    pc_->CreateOfferSdp(SEND_ONLY);
+    pc_->CreateOfferSdp(RECV_ONLY);
     pc_->UpdatePcState(PC_SDP_DONE_STATE);
 
     TransportConnectRequest();
@@ -317,16 +318,18 @@ void MsPull::ParseVideoConsume(const std::string& data) {
     }
 
     auto rtp_parameter_json = ret_json["rtpParameters"];
-    auto encodings_json = ret_json["encodings"];
+    auto encodings_json = rtp_parameter_json["encodings"];
 
     uint32_t ssrc = 0;
     uint32_t rtx_ssrc = 0;
     bool found_ssrc = false;
     for(auto & encoding_json : encodings_json) {
         auto ssrc_it = encoding_json.find("ssrc");
+        LogInfof(logger_, "encoding find ssrc");
         if (ssrc_it != encoding_json.end() && ssrc_it->is_number()) {
             ssrc = (uint32_t)ssrc_it->get<int>();
             found_ssrc = true;
+            LogInfof(logger_, "get video ssrc:%u", ssrc);
 
             auto rtx_it = encoding_json.find("rtx");
             if (rtx_it != encoding_json.end() && rtx_it->is_object()) {
@@ -345,7 +348,8 @@ void MsPull::ParseVideoConsume(const std::string& data) {
         CSM_THROW_ERROR("fail to get ssrc in video consume");
     }
 
-    int video_mid = rtp_parameter_json["mid"];
+    std::string video_mid_str = rtp_parameter_json["mid"];
+    int video_mid = atoi(video_mid_str.c_str());
     pc_->SetVideoMid(SDP_ANSWER, video_mid);
 
     auto codecs_array = rtp_parameter_json["codecs"];
@@ -380,7 +384,7 @@ void MsPull::ParseVideoConsume(const std::string& data) {
         }
     }
 
-    auto header_ext_array = ret_json["headerExtensions"];
+    auto header_ext_array = rtp_parameter_json["headerExtensions"];
     for (auto& ext_item : header_ext_array) {
         int id = ext_item["id"];
         std::string uri = ext_item["uri"];
@@ -404,7 +408,7 @@ void MsPull::ParseAudioConsume(const std::string& data) {
     }
 
     auto rtp_parameter_json = ret_json["rtpParameters"];
-    auto encodings_json = ret_json["encodings"];
+    auto encodings_json = rtp_parameter_json["encodings"];
 
     uint32_t ssrc = 0;
     bool found_ssrc = false;
@@ -421,7 +425,8 @@ void MsPull::ParseAudioConsume(const std::string& data) {
         CSM_THROW_ERROR("fail to get ssrc in audio consume");
     }
 
-    int audio_mid = rtp_parameter_json["mid"];
+    std::string audio_mid_str = rtp_parameter_json["mid"];
+    int audio_mid = atoi(audio_mid_str.c_str());
     pc_->SetAudioMid(SDP_ANSWER, audio_mid);
 
     auto codecs_array = rtp_parameter_json["codecs"];
@@ -451,7 +456,7 @@ void MsPull::ParseAudioConsume(const std::string& data) {
         }
     }
 
-    auto header_ext_array = ret_json["headerExtensions"];
+    auto header_ext_array = rtp_parameter_json["headerExtensions"];
     for (auto& ext_item : header_ext_array) {
         int id = ext_item["id"];
         std::string uri = ext_item["uri"];

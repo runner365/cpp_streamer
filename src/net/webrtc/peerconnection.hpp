@@ -206,6 +206,10 @@ public:
     virtual void PackHandleReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) override;
     virtual void MediaPacketOutput(std::shared_ptr<Media_Packet> pkt_ptr) override;
 
+public:
+    void SetMsPull(bool enable) { mspull_ = enable; }
+    bool GetMsPull() { return mspull_; }
+
 private:
     std::string GetDirectionString(WebRtcSdpDirection direction_type);
     void Report(const std::string& key, const std::string& value);
@@ -283,6 +287,9 @@ private:
 
 private://for rtp extern header
     std::map<int, RTP_EXT_INFO> rtp_ext_headers_;
+
+private://for mediasoup pull
+    bool mspull_ = false;
 };
 
 }

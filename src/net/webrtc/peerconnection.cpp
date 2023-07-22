@@ -12,6 +12,7 @@
 #include "byte_crypto.hpp"
 #include "pack_handle_h264.hpp"
 #include "pack_handle_audio.hpp"
+#include "h264_h265_header.hpp"
 
 #include <cstring>
 #include <sstream>
@@ -374,7 +375,7 @@ std::string PeerConnection::CreateOfferSdp(WebRtcSdpDirection direction_type) {
 }
 
 int PeerConnection::HandleRtcpSr(uint8_t* data, int len) {
-    int ret = 0;
+    int ret = sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpSrBlock);
     try {
         RtcpSrPacket* rr_pkt = RtcpSrPacket::Parse(data, len);
         uint32_t ssrc = rr_pkt->GetSsrc();
@@ -537,7 +538,7 @@ void PeerConnection::HandleRtcp(uint8_t* data, size_t len) {
         int item_total = (int)sizeof(RtcpCommonHeader) + payload_length;
         int ret = 0;
 
-        LogDebugf(logger_, "rtcp type:%d", header->packet_type);
+        LogDebugf(logger_, "rtcp type:%d, left_len:%d", header->packet_type, left_len);
         switch (header->packet_type)
         {
             case RTCP_SR:
@@ -552,15 +553,18 @@ void PeerConnection::HandleRtcp(uint8_t* data, size_t len) {
                 }
             case RTCP_SDES:
                 {
+                    ret = left_len;
                     //rtcp sdes packet needn't to be handled.
                     break;
                 }
             case RTCP_BYE:
                 {
+                    ret = left_len;
                     break;
                 }
             case RTCP_APP:
                 {
+                    ret = left_len;
                     break;
                 }
             case RTCP_RTPFB:
@@ -662,7 +666,10 @@ void PeerConnection::HandleRtpData(uint8_t* data, size_t len) {
             return;
         }
         uint32_t ssrc = pkt->GetSsrc();
-        if (video_recv_stream_ && ssrc == video_recv_stream_->GetSsrc()) {
+        if (mspull_ && ssrc == 1234) {
+            return;//discard ssrc=1234 which is test ssrc.
+        }
+        if (video_recv_stream_ && (ssrc == video_recv_stream_->GetSsrc()|| ssrc == video_recv_stream_->GetRtxSsrc())) {
             video_recv_stream_->HandleRtpPacket(pkt);
             jb_video_.InputRtpPacket(video_recv_stream_->GetClockRate(), pkt);
             return;
@@ -714,7 +721,9 @@ void PeerConnection::OnDtlsConnected(CRYPTO_SUITE_ENUM suite,
         if (direct_type_ == SEND_ONLY) {
             CreateSendStream();
         } else if (direct_type_ == RECV_ONLY) {
-            CreateRecvStream();
+            if (!mspull_) {
+                CreateRecvStream();
+            }
         } else {
             LogErrorf(logger_, "peer connection direction type error:%d", direct_type_);
         }
@@ -1209,7 +1218,7 @@ void PeerConnection::SetVideoSsrc(SDP_TYPE type, uint32_t ssrc) {
             .cname        = offer_sdp_.video_cname_,
             .rtx_ssrc     = offer_sdp_.video_rtx_ssrc_
         };
-        offer_sdp_.ssrc_info_map_[offer_sdp_.video_ssrc_] = video_ssrc_info;
+        offer_sdp_.ssrc_info_map_[ssrc] = video_ssrc_info;
 
         offer_sdp_.video_ssrc_ = ssrc;
     } else {
@@ -1222,7 +1231,7 @@ void PeerConnection::SetVideoSsrc(SDP_TYPE type, uint32_t ssrc) {
             .cname        = answer_sdp_.video_cname_,
             .rtx_ssrc     = answer_sdp_.video_rtx_ssrc_
         };
-        answer_sdp_.ssrc_info_map_[answer_sdp_.video_ssrc_] = video_ssrc_info;
+        answer_sdp_.ssrc_info_map_[ssrc] = video_ssrc_info;
 
         answer_sdp_.video_ssrc_ = ssrc;
     }
@@ -1697,14 +1706,21 @@ void PeerConnection::PackHandleReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
 void PeerConnection::MediaPacketOutput(std::shared_ptr<Media_Packet> pkt_ptr) {
     if (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE) {
         pkt_ptr->dts_ = pkt_ptr->pts_ = pkt_ptr->dts_ * 1000 / video_recv_stream_->GetClockRate();
-        //LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen(), "video data");
+        uint8_t* p = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+        int pos = GetNaluTypePos(p);
+
+        if(H264_IS_AUD(p[pos])) {
+            return;
+        }
+        LogInfof(logger_, "packed video packet:%s", pkt_ptr->Dump().c_str());
+        LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), /*pkt_ptr->buffer_ptr_->DataLen()*/6, "video data");
     } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
         pkt_ptr->dts_ = pkt_ptr->pts_ = pkt_ptr->dts_ * 1000 / audio_recv_stream_->GetClockRate();
+        LogInfof(logger_, "packed audio packet:%s", pkt_ptr->Dump().c_str());
     } else {
         LogErrorf(logger_, "media packet unknown type:%d", pkt_ptr->av_type_);
         return;
     }
-    //LogInfof(logger_, "packed media packet:%s", pkt_ptr->Dump().c_str());
     if (media_cb_) {
         media_cb_->OnReceiveMediaPacket(pkt_ptr);
     }

@@ -226,11 +226,13 @@ add_library(mspull SHARED
             ./src/net/webrtc/rtc_recv_stream.cpp
             ./src/net/webrtc/jitterbuffer.cpp
             ./src/net/webrtc/nack_generator.cpp
+            ./src/net/webrtc/pack_handle_h264.cpp
             ./src/net/http/http_client.cpp
             ./src/net/rtprtcp/rtp_packet.cpp
             ./src/net/rtprtcp/rtp_h264_pack.cpp
             ./src/format/sdp/sdp.cpp
             ./src/format/opus_header.cpp
+            ./src/format/h264_h265_header.cpp
             ./src/net/stun/stun.cpp
             ./src/utils/byte_crypto.cpp)
 

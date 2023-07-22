@@ -32,21 +32,24 @@ info   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 
 typedef struct {
-    uint32_t ssrc;
+    //uint32_t ssrc;
     uint32_t ntp_sec;
     uint32_t ntp_frac;
     uint32_t rtp_timestamp;
     uint32_t pkt_count;
     uint32_t bytes_count;
-} RtcpSrHeader;
+} RtcpSrBlock;
 
 class RtcpSrPacket
 {
 public:
     RtcpSrPacket(RtcpCommonHeader* rtcp_header) {
-        memcpy(this->data, (uint8_t*)rtcp_header, sizeof(RtcpCommonHeader) + sizeof(RtcpSrHeader));
-        this->rtcp_header_ = (RtcpCommonHeader*)(this->data);
-        this->header_      = (RtcpSrHeader*)(this->data + sizeof(RtcpCommonHeader));
+        size_t len = sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpSrBlock);
+        memcpy(this->data, (uint8_t*)rtcp_header, len);
+        this->rtcp_header_  = (RtcpCommonHeader*)(this->data);
+        uint32_t* ssrc_p    = (uint32_t*)(this->rtcp_header_ + 1);
+        this->sender_ssrc_  = ntohl(*ssrc_p);
+        this->header_       = (RtcpSrBlock*)(ssrc_p + 1);
     }
 
     RtcpSrPacket() {
@@ -56,8 +59,12 @@ public:
         rtcp_header_->padding     = 0;
         rtcp_header_->count       = 0;
         rtcp_header_->packet_type = (uint8_t)RTCP_SR;
-        rtcp_header_->length      = (uint32_t)htons(sizeof(RtcpSrHeader)/sizeof(uint32_t));
-        this->header_             = (RtcpSrHeader*)(this->data + sizeof(RtcpCommonHeader));
+        rtcp_header_->length      = (uint32_t)htons(sizeof(RtcpSrBlock)/sizeof(uint32_t));
+
+        uint32_t* ssrc_p = (uint32_t*)(rtcp_header_ + 1);
+        sender_ssrc_ = 1;
+        *ssrc_p = htonl(sender_ssrc_);
+        this->header_             = (RtcpSrBlock*)(ssrc_p + 1);
     }
 
     ~RtcpSrPacket() {
@@ -65,11 +72,13 @@ public:
     }
 
     void SetSsrc(uint32_t ssrc) {
-        header_->ssrc = (uint32_t)htonl(ssrc);
+        uint32_t* ssrc_p = (uint32_t*)(rtcp_header_ + 1);
+        sender_ssrc_ = ssrc;
+        *ssrc_p = htonl(sender_ssrc_);
     }
 
     uint32_t GetSsrc() {
-        return ntohl(header_->ssrc);
+        return ntohl(sender_ssrc_);
     }
 
     void SetNtp(uint32_t ntp_sec, uint32_t ntp_frac) {
@@ -111,7 +120,7 @@ public:
 
 public:
     static RtcpSrPacket* Parse(uint8_t* data, size_t len) {
-        if (len != (sizeof(RtcpCommonHeader) + sizeof(RtcpSrHeader))) {
+        if (len != (sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpSrBlock))) {
             CSM_THROW_ERROR("rtcp sr len(%lu) error", len);
         }
         RtcpCommonHeader* rtcp_header = (RtcpCommonHeader*)data;
@@ -121,7 +130,7 @@ public:
 
     uint8_t* Serial(size_t& ret_len) {
         uint8_t* ret_data = this->data;
-        ret_len = sizeof(RtcpCommonHeader) + sizeof(RtcpSrHeader);
+        ret_len = sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpSrBlock);
 
         return ret_data;
     }
@@ -132,7 +141,7 @@ public:
         ss << "rtcp version:" << (int)rtcp_header_->version << ", pad:" << (int)rtcp_header_->padding
            << ", rc:" << (int)rtcp_header_->count << ", rtcp type:" << (int)rtcp_header_->packet_type
            << ", length:" << (int)rtcp_header_->length << "\r\n";
-        ss << "  ssrc:" << header_->ssrc << ", ntp sec:" << header_->ntp_sec << ", ntp frac:"
+        ss << "  ssrc:" << sender_ssrc_ << ", ntp sec:" << header_->ntp_sec << ", ntp frac:"
            << header_->ntp_frac << ", rtp timestamp:" << header_->rtp_timestamp
            << ", packet count:" << header_->pkt_count << ", bytes:"
            << header_->bytes_count << "\r\n";
@@ -141,11 +150,12 @@ public:
     }
 
     uint8_t* GetData() { return this->data; }
-    size_t GetDataLen() { return sizeof(RtcpCommonHeader) + sizeof(RtcpSrHeader); }
+    size_t GetDataLen() { return sizeof(RtcpCommonHeader) + sizeof(uint32_t) + sizeof(RtcpSrBlock); }
 
 private:
     RtcpCommonHeader* rtcp_header_ = nullptr;
-    RtcpSrHeader* header_          = nullptr;
+    uint32_t sender_ssrc_          = 0;
+    RtcpSrBlock* header_           = nullptr;
     uint8_t data[1500];
 };
 
