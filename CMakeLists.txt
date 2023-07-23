@@ -34,6 +34,7 @@ include_directories(${CMAKE_BINARY_DIR}/output/include
                     src/net/stun
                     src/net/rtmp
                     src/net/webrtc
+                    src/net/timesync
                     src/utils
                     src/utils/av
                     3rdparty/libuv/include
@@ -95,6 +96,17 @@ target_link_libraries(mpegtsdemux pthread dl z m)
 ELSEIF (UNIX)
 target_link_libraries(mpegtsdemux pthread rt dl z m)
 ENDIF ()
+
+################################################################
+## timesync streamer module
+add_library(timesync SHARED
+            ./src/net/timesync/timesync.cpp)
+IF (APPLE)
+target_link_libraries(timesync pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(timesync pthread rt dl z m)
+ENDIF ()
+
 
 ################################################################
 ## rtmpplay streamer module

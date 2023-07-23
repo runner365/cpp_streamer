@@ -78,7 +78,7 @@ public:
     }
 
     uint32_t GetSsrc() {
-        return ntohl(sender_ssrc_);
+        return sender_ssrc_;
     }
 
     void SetNtp(uint32_t ntp_sec, uint32_t ntp_frac) {

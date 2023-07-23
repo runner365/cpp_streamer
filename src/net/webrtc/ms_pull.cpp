@@ -84,6 +84,7 @@ void MsPull::StartNetwork(const std::string& url, void* loop_handle) {
     loop_ = (uv_loop_t*)loop_handle;
 
     pc_ = new PeerConnection((uv_loop_t*)loop_handle, logger_, this);
+    pc_->SetMediaCallback(this);
     pc_->SetMsPull(true);
 
     BroadCasterRequest();
@@ -612,6 +613,13 @@ void MsPull::Report(const std::string& type, const std::string& value) {
     }
     report_->OnReport(name_, type, value);
 }
+
+void MsPull::OnReceiveMediaPacket(Media_Packet_Ptr pkt_ptr) {
+    for (auto sinker : sinkers_) {
+        sinker.second->SourceData(pkt_ptr);
+    }
+}
+
 }
 
 

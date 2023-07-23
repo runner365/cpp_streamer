@@ -77,8 +77,20 @@ void RtcRecvStream::GenerateJitter(uint32_t rtp_timestamp, int64_t recv_pkt_ms) 
 }
 
 void RtcRecvStream::HandleRtpPacket(RtpPacket* pkt) {
-    //LogInfof(logger_, "handle rtp packet:%s", pkt->Dump().c_str());
+    uint32_t ssrc = pkt->GetSsrc();
     uint16_t seq = pkt->GetSeq();
+
+    if (ssrc == GetRtxSsrc()) {
+        //LogInfof(logger_, "handle rtx packet:%s", pkt->Dump().c_str());
+        pkt->RtxDemux(GetSsrc(), GetPT());
+        //LogInfof(logger_, "handle rtx recover packet:%s", pkt->Dump().c_str());
+        //LogInfof(logger_, "handle rtx recover packet seq:%d, rtx seq:%d", pkt->GetSeq(), seq);
+
+        ssrc = pkt->GetSsrc();
+        seq  = pkt->GetSeq();
+    } else {
+        GenerateJitter(pkt->GetTimestamp(), pkt->GetLocalMs());
+    }
 
     if (!first_pkt_) {
         first_pkt_ = true;
@@ -87,13 +99,11 @@ void RtcRecvStream::HandleRtpPacket(RtpPacket* pkt) {
         UpdateSeq(seq);
     }
 
-    GenerateJitter(pkt->GetTimestamp(), pkt->GetLocalMs());
-
     if (nack_enable_) {
         nack_generator_.UpdateNackList(pkt);
     }
 
-    statics_.Update(pkt->GetDataLength(), now_millisec());
+    statics_.Update(pkt->GetDataLength(), pkt->GetLocalMs()); 
 }
 
 //rfc3550: A.1 RTP Data Header Validity Checks
@@ -194,7 +204,7 @@ void RtcRecvStream::HandleRtcpSr(RtcpSrPacket* sr_pkt) {
 
     last_sr_ms_ = now_ms;
     lsr_ = ((ntp_.ntp_sec & 0xffff) << 16) | (ntp_.ntp_frac & 0xffff);
-    LogInfof(logger_, "rtc recv stream media type:%d, ntp:%u.%u, rtp ts:%ld, pkt count:%u, bytes:%u",
+    LogDebugf(logger_, "rtc recv stream media type:%d, ntp:%u.%u, rtp ts:%ld, pkt count:%u, bytes:%u",
             media_type_, ntp_.ntp_sec, ntp_.ntp_frac, rtp_timestamp_, pkt_count_, bytes_count_);
 }
 

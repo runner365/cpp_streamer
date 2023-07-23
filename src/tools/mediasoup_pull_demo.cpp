@@ -41,7 +41,12 @@ public:
         ts_streamer_->SetLogger(logger_);
         ts_streamer_->SetReporter(this);
 
-        mspull_streamer_->AddSinker(ts_streamer_);
+        timesync_streamer_ = CppStreamerFactory::MakeStreamer("timesync");
+        timesync_streamer_->SetLogger(logger_);
+        timesync_streamer_->SetReporter(this);
+
+        mspull_streamer_->AddSinker(timesync_streamer_);
+        timesync_streamer_->AddSinker(ts_streamer_);
         ts_streamer_->AddSinker(this);
 
         return 0;
@@ -115,8 +120,9 @@ private:
 
 private:
     Logger* logger_ = nullptr;
-    CppStreamerInterface* mspull_streamer_ = nullptr;
-    CppStreamerInterface* ts_streamer_   = nullptr;
+    CppStreamerInterface* mspull_streamer_   = nullptr;
+    CppStreamerInterface* timesync_streamer_ = nullptr;
+    CppStreamerInterface* ts_streamer_       = nullptr;
 };
 
 /*

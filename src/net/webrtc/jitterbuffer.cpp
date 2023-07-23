@@ -127,8 +127,8 @@ void JitterBuffer::CheckTimeout() {
 
         if (diff_t > buffer_timeout_) {
             if (pkt_info_ptr->media_type_ == MEDIA_VIDEO_TYPE) {
-                LogInfof(logger_, "timeout output type:%d, seq:%d",
-                    pkt_info_ptr->media_type_, pkt_info_ptr->extend_seq_);
+                LogInfof(logger_, "timeout output type:%d, seq:%d, timeout:%ld",
+                    pkt_info_ptr->media_type_, pkt_info_ptr->extend_seq_, buffer_timeout_);
             }
 
             OutputPacket(pkt_info_ptr);

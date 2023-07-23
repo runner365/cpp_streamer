@@ -11,7 +11,7 @@
 namespace cpp_streamer
 {
 #define JITTER_BUFFER_AUDIO_TIMEOUT 100 //ms
-#define JITTER_BUFFER_VIDEO_TIMEOUT 300 //ms
+#define JITTER_BUFFER_VIDEO_TIMEOUT 400 //ms
 
 class RtpPacketInfo
 {

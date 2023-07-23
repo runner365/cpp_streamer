@@ -137,6 +137,18 @@ ELSEIF (UNIX)
 target_link_libraries(mediasoup_pull_demo rt dl z m srtp2 ssl crypto pthread uv)
 ENDIF ()
 
+###############################################################
+# example: mspull client bench
+add_executable(mediasoup_pull_bench
+            ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/mediasoup_pull_bench.cpp)
+add_dependencies(mediasoup_pull_bench mspull openssl libsrtp)
+
+IF (APPLE)
+target_link_libraries(mediasoup_pull_bench dl z m srtp2 ssl crypto pthread uv)
+ELSEIF (UNIX)
+target_link_libraries(mediasoup_pull_bench rt dl z m srtp2 ssl crypto pthread uv)
+ENDIF ()
 
 ###############################################################
 # example: whip srs demo

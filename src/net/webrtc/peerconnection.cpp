@@ -381,10 +381,10 @@ int PeerConnection::HandleRtcpSr(uint8_t* data, int len) {
         uint32_t ssrc = rr_pkt->GetSsrc();
         if (video_recv_stream_ && ssrc == video_recv_stream_->GetSsrc()) {
             video_recv_stream_->HandleRtcpSr(rr_pkt);
-        }
-
-        if (audio_recv_stream_ && ssrc == audio_recv_stream_->GetSsrc()) {
+        } else if (audio_recv_stream_ && ssrc == audio_recv_stream_->GetSsrc()) {
             audio_recv_stream_->HandleRtcpSr(rr_pkt);
+        } else {
+            LogInfof(logger_, "unkown rtcp sr ssrc:%u", ssrc);
         }
         delete rr_pkt;
     } catch(CppStreamException& e) {
@@ -669,7 +669,7 @@ void PeerConnection::HandleRtpData(uint8_t* data, size_t len) {
         if (mspull_ && ssrc == 1234) {
             return;//discard ssrc=1234 which is test ssrc.
         }
-        if (video_recv_stream_ && (ssrc == video_recv_stream_->GetSsrc()|| ssrc == video_recv_stream_->GetRtxSsrc())) {
+        if (video_recv_stream_ && (ssrc == video_recv_stream_->GetSsrc() || ssrc == video_recv_stream_->GetRtxSsrc())) {
             video_recv_stream_->HandleRtpPacket(pkt);
             jb_video_.InputRtpPacket(video_recv_stream_->GetClockRate(), pkt);
             return;
@@ -678,7 +678,11 @@ void PeerConnection::HandleRtpData(uint8_t* data, size_t len) {
             jb_audio_.InputRtpPacket(audio_recv_stream_->GetClockRate(), pkt);
             return;
         } else {
-            LogErrorf(logger_, "fail to find ssrc:%u", ssrc);
+            uint32_t v_ssrc   = video_recv_stream_ ? video_recv_stream_->GetSsrc() : 0;
+            uint32_t rtx_ssrc = video_recv_stream_ ? video_recv_stream_->GetRtxSsrc() : 0;
+            uint32_t a_ssrc   = audio_recv_stream_ ? audio_recv_stream_->GetSsrc() : 0;
+            LogErrorf(logger_, "fail to find ssrc:%u, video ssrc:%u, video rtx ssrc:%u, audio ssrc:%u", 
+                    ssrc, v_ssrc, rtx_ssrc, a_ssrc);
         }
     } catch(CppStreamException& e) {
         LogErrorf(logger_, "handle rtp data exception:%s", e.what());
@@ -965,7 +969,7 @@ void PeerConnection::SendRr(int64_t now_ms) {
         }
     }
     if (audio_recv_stream_) {
-        audio_rr_block = video_recv_stream_->GetRtcpRr(now_ms);
+        audio_rr_block = audio_recv_stream_->GetRtcpRr(now_ms);
         if (audio_rr_block) {
             rr_pkt.AddRrBlock(audio_rr_block->GetBlock());
         }
@@ -974,6 +978,7 @@ void PeerConnection::SendRr(int64_t now_ms) {
     if (video_rr_block || audio_rr_block) {
         size_t data_len;
         uint8_t* data = rr_pkt.GetData(data_len);
+        //LogInfof(logger_, "rtcp rr packet:%s", rr_pkt.Dump().c_str());
         SendRtcpPacket(data, data_len);
     }
 
@@ -1375,10 +1380,20 @@ void PeerConnection::SetVideoRtxPayloadType(SDP_TYPE type, int payloadType) {
     info.payload_type = payloadType;
     info.codec_type   = "rtx";
     info.clock_rate   = 90000;
+
+    FmtpInfo fmtp_info;
+    fmtp_info.payload_type = GetVideoPayloadType(type);
+    fmtp_info.attr_string  = "apt=";
+    fmtp_info.is_video     = true;
+    fmtp_info.is_rtx       = true;
+    fmtp_info.rtx_payload_type = payloadType;
+
     if (type == SDP_OFFER) {
         offer_sdp_.video_rtp_map_infos_[payloadType] = info;
+        offer_sdp_.video_fmtp_vec_.push_back(fmtp_info);
     } else {
         answer_sdp_.video_rtp_map_infos_[payloadType] = info;
+        answer_sdp_.video_fmtp_vec_.push_back(fmtp_info);
     }
 }
 
@@ -1698,6 +1713,7 @@ void PeerConnection::RtpPacketOutput(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
 
 void PeerConnection::PackHandleReset(std::shared_ptr<RtpPacketInfo> pkt_ptr) {
     LogInfof(logger_, "pack handle reset");
+    find_keyframe_ = true;
     if (video_recv_stream_) {
         video_recv_stream_->RequestKeyFrame(-1);
     }
@@ -1712,11 +1728,14 @@ void PeerConnection::MediaPacketOutput(std::shared_ptr<Media_Packet> pkt_ptr) {
         if(H264_IS_AUD(p[pos])) {
             return;
         }
-        LogInfof(logger_, "packed video packet:%s", pkt_ptr->Dump().c_str());
-        LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), /*pkt_ptr->buffer_ptr_->DataLen()*/6, "video data");
+        if (find_keyframe_) {
+            if (!H264_IS_KEYFRAME(p[pos])) {
+                return;
+            }
+            find_keyframe_ = false;;
+        }
     } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
         pkt_ptr->dts_ = pkt_ptr->pts_ = pkt_ptr->dts_ * 1000 / audio_recv_stream_->GetClockRate();
-        LogInfof(logger_, "packed audio packet:%s", pkt_ptr->Dump().c_str());
     } else {
         LogErrorf(logger_, "media packet unknown type:%d", pkt_ptr->av_type_);
         return;

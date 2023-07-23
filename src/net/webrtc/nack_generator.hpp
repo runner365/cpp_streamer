@@ -14,9 +14,9 @@
 namespace cpp_streamer
 {
 #define NACK_LIST_MAX        5000
-#define NACK_DEFAULT_TIMEOUT 30//ms
+#define NACK_DEFAULT_TIMEOUT 10//ms
 #define NACK_RETRY_MAX       20
-#define NACK_DEFAULT_RTT     20//ms
+#define NACK_DEFAULT_RTT     15//ms
 
 class NACK_INFO
 {

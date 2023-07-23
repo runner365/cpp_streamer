@@ -276,8 +276,9 @@ private:
     JitterBuffer jb_audio_;
 
 private:
-    PackHandleBase* h264_pack_    = nullptr;
+    PackHandleBase* h264_pack_  = nullptr;
     PackHandleBase* audio_pack_ = nullptr;
+    bool find_keyframe_         = false;
 
 private:
     MediaCallbackI* media_cb_ = nullptr;

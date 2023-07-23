@@ -25,7 +25,7 @@ typedef enum
 } BROADCASTER_STATE;
 
 
-class MsPull : public CppStreamerInterface , public HttpClientCallbackI, public PCStateReportI
+class MsPull : public CppStreamerInterface , public HttpClientCallbackI, public PCStateReportI, public MediaCallbackI
 {
 public:
     MsPull();
@@ -46,6 +46,9 @@ protected:
 
 public:
     virtual void OnState(const std::string& type, const std::string& value) override;
+
+public:
+    virtual void OnReceiveMediaPacket(Media_Packet_Ptr pkt_ptr) override;
 
 private:
     void ParseVideoConsume(const std::string& data);
