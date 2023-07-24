@@ -1,6 +1,8 @@
 #include "ms_pull.hpp"
 #include "mediasoup_pub.hpp"
 #include "uuid.hpp"
+#include "byte_crypto.hpp"
+
 #include <uv.h>
 #include <sstream>
 
@@ -41,6 +43,13 @@ MsPull::~MsPull()
     if (pc_) {
         delete pc_;
         pc_ = nullptr;
+    }
+}
+
+void MsPull::ReleaseHttpClient(HttpClient*& hc) {
+    if (hc) {
+        delete hc;
+        hc = nullptr;
     }
 }
 

@@ -1,6 +1,6 @@
 #ifndef UUID_H
 #define UUID_H
-#include "byte_crypto.hpp"
+//#include "byte_crypto.hpp"
 #include <cstring>
 #include <random>
 #include <sstream>

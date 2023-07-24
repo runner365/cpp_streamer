@@ -77,7 +77,7 @@ ENDIF ()
 add_executable(rtmpplay2flv_streamer
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/rtmpplay2flv_streamer.cpp)
-add_dependencies(rtmpplay2flv_streamer flvmux rtmpplay)
+add_dependencies(rtmpplay2flv_streamer uv flvmux rtmpplay)
 
 IF (APPLE)
 target_link_libraries(rtmpplay2flv_streamer pthread dl z m ssl crypto uv)
@@ -91,7 +91,7 @@ ENDIF()
 add_executable(flv2rtmppublish_streamer
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/flv2rtmppublish_streamer.cpp)
-add_dependencies(flv2rtmppublish_streamer flvdemux rtmppublish)
+add_dependencies(flv2rtmppublish_streamer uv flvdemux rtmppublish)
 
 IF (APPLE)
 target_link_libraries(flv2rtmppublish_streamer pthread dl z m ssl crypto uv)
@@ -116,7 +116,7 @@ ENDIF ()
 add_executable(mediasoup_push_demo
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/mediasoup_push_demo.cpp)
-add_dependencies(mediasoup_push_demo mspush openssl libsrtp)
+add_dependencies(mediasoup_push_demo mspush uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(mediasoup_push_demo dl z m srtp2 ssl crypto pthread uv)
@@ -129,7 +129,7 @@ ENDIF ()
 add_executable(mediasoup_pull_demo
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/mediasoup_pull_demo.cpp)
-add_dependencies(mediasoup_pull_demo mspull openssl libsrtp)
+add_dependencies(mediasoup_pull_demo mspull uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(mediasoup_pull_demo dl z m srtp2 ssl crypto pthread uv)
@@ -142,7 +142,7 @@ ENDIF ()
 add_executable(mediasoup_pull_bench
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/mediasoup_pull_bench.cpp)
-add_dependencies(mediasoup_pull_bench mspull openssl libsrtp)
+add_dependencies(mediasoup_pull_bench mspull uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(mediasoup_pull_bench dl z m srtp2 ssl crypto pthread uv)
@@ -155,7 +155,7 @@ ENDIF ()
 add_executable(whip_srs_demo
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/whip_srs_demo.cpp)
-add_dependencies(whip_srs_demo whip openssl libsrtp)
+add_dependencies(whip_srs_demo whip uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(whip_srs_demo dl z m srtp2 ssl crypto pthread uv)
@@ -168,7 +168,7 @@ ENDIF ()
 add_executable(whip_srs_bench
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/whip_srs_bench.cpp)
-add_dependencies(whip_srs_bench whip openssl libsrtp)
+add_dependencies(whip_srs_bench whip uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(whip_srs_bench dl z m srtp2 ssl crypto pthread uv)
@@ -181,7 +181,7 @@ ENDIF ()
 add_executable(mediasoup_push_bench
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/mediasoup_push_bench.cpp)
-add_dependencies(mediasoup_push_bench mspush openssl libsrtp)
+add_dependencies(mediasoup_push_bench mspush uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(mediasoup_push_bench dl z m srtp2 ssl crypto pthread uv)
@@ -194,7 +194,7 @@ ENDIF ()
 add_executable(whep_srs_demo
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/whep_srs_demo.cpp)
-add_dependencies(whep_srs_demo whep openssl libsrtp)
+add_dependencies(whep_srs_demo whep uv openssl libsrtp)
 
 IF (APPLE)
 target_link_libraries(whep_srs_demo dl z m srtp2 ssl crypto pthread uv)
@@ -206,7 +206,7 @@ ENDIF ()
 # example: udp client demo
 add_executable(udp_client_demo
             ${PROJECT_SOURCE_DIR}/src/net/udp/udp_client_echo.cpp)
-add_dependencies(udp_client_demo uv)
+add_dependencies(udp_client_demo uv openssl)
 IF (APPLE)
 target_link_libraries(udp_client_demo dl z m ssl crypto pthread uv)
 ELSEIF (UNIX)
@@ -217,7 +217,7 @@ ENDIF ()
 # example: udp server demo
 add_executable(udp_server_demo
             ${PROJECT_SOURCE_DIR}/src/net/udp/udp_server_echo.cpp)
-add_dependencies(udp_server_demo uv)
+add_dependencies(udp_server_demo uv openssl)
 IF (APPLE)
 target_link_libraries(udp_server_demo dl z m ssl crypto pthread uv)
 ELSEIF (UNIX)

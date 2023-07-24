@@ -2,6 +2,7 @@
 #include "uuid.hpp"
 #include "dtls.hpp"
 #include "stringex.hpp"
+#include "byte_crypto.hpp"
 
 #include <sstream>
 

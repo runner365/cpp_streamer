@@ -154,6 +154,7 @@ add_library(whip SHARED
             ./src/net/webrtc/rtc_recv_stream.cpp
             ./src/net/webrtc/jitterbuffer.cpp
             ./src/net/webrtc/nack_generator.cpp
+            ./src/net/webrtc/pack_handle_h264.cpp
             ./src/net/http/http_client.cpp
             ./src/net/rtprtcp/rtp_packet.cpp
             ./src/net/rtprtcp/rtp_h264_pack.cpp
@@ -182,6 +183,7 @@ add_library(mspush SHARED
             ./src/net/webrtc/rtc_recv_stream.cpp
             ./src/net/webrtc/jitterbuffer.cpp
             ./src/net/webrtc/nack_generator.cpp
+            ./src/net/webrtc/pack_handle_h264.cpp
             ./src/net/http/http_client.cpp
             ./src/net/rtprtcp/rtp_packet.cpp
             ./src/net/rtprtcp/rtp_h264_pack.cpp

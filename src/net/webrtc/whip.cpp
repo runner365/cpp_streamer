@@ -1,5 +1,6 @@
 #include "whip.hpp"
 #include "uuid.hpp"
+#include "byte_crypto.hpp"
 
 #include <iostream>
 #include <stdio.h>

@@ -1,5 +1,7 @@
 #include "ms_push.hpp"
 #include "uuid.hpp"
+#include "byte_crypto.hpp"
+
 #include <uv.h>
 #include <sstream>
 
