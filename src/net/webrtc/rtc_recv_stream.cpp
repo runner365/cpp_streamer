@@ -194,18 +194,18 @@ void RtcRecvStream::GenerateNackList(const std::vector<uint16_t>& seq_vec) {
 
 void RtcRecvStream::HandleRtcpSr(RtcpSrPacket* sr_pkt) {
     int64_t now_ms = now_millisec();
-    NTP_TIMESTAMP ntp_;
+    NTP_TIMESTAMP ntp;
 
-    ntp_.ntp_sec   = sr_pkt->GetNtpSec();
-    ntp_.ntp_frac  = sr_pkt->GetNtpFrac();
+    ntp.ntp_sec   = sr_pkt->GetNtpSec();
+    ntp.ntp_frac  = sr_pkt->GetNtpFrac();
     rtp_timestamp_ = (int64_t)sr_pkt->GetRtpTimestamp();
     pkt_count_     = sr_pkt->GetPktCount();
     bytes_count_   = sr_pkt->GetBytesCount();
 
     last_sr_ms_ = now_ms;
-    lsr_ = ((ntp_.ntp_sec & 0xffff) << 16) | (ntp_.ntp_frac & 0xffff);
+    lsr_ = ((ntp.ntp_sec & 0xffff) << 16) | ((ntp.ntp_frac >> 16) & 0xffff);
     LogDebugf(logger_, "rtc recv stream media type:%d, ntp:%u.%u, rtp ts:%ld, pkt count:%u, bytes:%u",
-            media_type_, ntp_.ntp_sec, ntp_.ntp_frac, rtp_timestamp_, pkt_count_, bytes_count_);
+            media_type_, ntp.ntp_sec, ntp.ntp_frac, rtp_timestamp_, pkt_count_, bytes_count_);
 }
 
 RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
@@ -214,16 +214,11 @@ RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
     uint32_t dlsr = 0;
 
     if (last_sr_ms_ > 0) {
-        double diff_t = (double)(now_millisec() - last_sr_ms_);
-        double dlsr_float = diff_t / 1000 * 65535;
-
-        dlsr = (uint32_t)dlsr_float;
-        //log_infof("send_rtcp_rr ssrc:%u, diff_t:%f, dlsr_float:%f, dlsr:%u",
-        //    ssrc_, diff_t, dlsr_float, dlsr);
+        uint32_t diff_t = (uint32_t)(now_millisec() - last_sr_ms_);
+        dlsr = (diff_t / 1000) << 16;
+        dlsr |= (uint32_t)((diff_t % 1000) * 65536 / 1000);
     }
-    
     int64_t total_lost = GetPacketLost();
-
     rr_block->SetReporteeSsrc(ssrc_);
     rr_block->SetFracLost(frac_lost_);
     rr_block->SetCumulativeLost(total_lost);
@@ -232,6 +227,8 @@ RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
     rr_block->SetLsr(lsr_);
     rr_block->SetDlsr(dlsr);
 
+    LogDebugf(logger_, "send_rtcp_rr ssrc:%u, lsr:%u, dlsr:%u, frac lost:%d, total lost:%d",
+            ssrc_, lsr_, dlsr, frac_lost_, total_lost);
     return rr_block;
 }
 
