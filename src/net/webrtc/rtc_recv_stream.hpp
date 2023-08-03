@@ -53,6 +53,7 @@ public:
     void OnTimer(int64_t now_ms);
     RtcpRrBlockInfo* GetRtcpRr(int64_t now_ms);
     void RequestKeyFrame(int64_t now_ms);
+    void SendXrRrt(int64_t now_ms);
 
 public:
     virtual void GenerateNackList(const std::vector<uint16_t>& seq_vec) override;
@@ -63,7 +64,7 @@ public:
 
 public:
     void HandleRtcpSr(RtcpSrPacket* pkt);
-    void HandleXrRrt(XrRrtData* rrt_block);
+    void HandleXrDlrr(XrDlrrData* dlrr_block);
 
 public:
     uint32_t GetRtt() { return avg_rtt_; }
@@ -87,14 +88,12 @@ private:
 private:
     uint32_t ssrc_  = 0;
     uint8_t pt_     = 0;
-    uint16_t seq_   = 0;
     int clock_rate_ = 0;
     int channel_    = 0;
 
 private:
     uint8_t rtx_payload_ = 0;
     uint32_t rtx_ssrc_   = 0;
-    uint16_t rtx_seq_    = 0;
 
 private:
     bool first_pkt_ = false;
@@ -120,7 +119,7 @@ private://for request keyframe
     int64_t last_keyframe_ms_ = -1;
     
 private:
-    int avg_rtt_ = 0;
+    int avg_rtt_ = 10;
     int64_t resend_count_ = 0;
     int64_t last_resend_count_ = 0;
     int64_t last_resend_ms_ = -1;

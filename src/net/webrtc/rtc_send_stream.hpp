@@ -7,7 +7,7 @@
 #include "rtcp_sr.hpp"
 #include "rtcp_rr.hpp"
 #include "rtcpfb_nack.hpp"
-#include "rtcp_xr_dlrr.hpp"
+#include "rtcp_xr_rrt.hpp"
 #include "rtc_stream_pub.hpp"
 #include "stream_statics.hpp"
 
@@ -58,7 +58,7 @@ public:
 public:
     void HandleRtcpRr(RtcpRrBlockInfo& block_info);
     void HandleRtcpNack(RtcpFbNack* nack_pkt);
-    void HandleXrDlrr(XrDlrrData* dlrr_block);
+    void HandleXrRrt(XrRrtData* rrt_block);
 
 public:
     uint32_t GetRtt() { return avg_rtt_; }

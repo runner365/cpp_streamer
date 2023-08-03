@@ -473,12 +473,12 @@ int PeerConnection::HandleXrDlrr(XrDlrrData* dlrr_block) {
     uint32_t ssrc = ntohl(dlrr_block->ssrc);
 
     LogInfof(logger_, "Handle Xr Dlrr ssrc:%u", ssrc);
-    if (video_send_stream_ && ssrc == video_send_stream_->GetSsrc()) {
-        video_send_stream_->HandleXrDlrr(dlrr_block);
+    if (video_recv_stream_ && ssrc == video_recv_stream_->GetSsrc()) {
+        video_recv_stream_->HandleXrDlrr(dlrr_block);
     }
 
-    if (audio_send_stream_ && ssrc == audio_send_stream_->GetSsrc()) {
-        audio_send_stream_->HandleXrDlrr(dlrr_block);
+    if (audio_recv_stream_ && ssrc == audio_recv_stream_->GetSsrc()) {
+        audio_recv_stream_->HandleXrDlrr(dlrr_block);
     }
     return 0;
 }
@@ -492,12 +492,14 @@ int PeerConnection::HandleRtcpXr(uint8_t* data, int data_len) {
     while(xr_len > 0) {
         switch(xr_hdr->bt)
         {
+            //handle dlrr as receiver
             case XR_DLRR:
             {
                 XrDlrrData* dlrr_block = (XrDlrrData*)xr_hdr;
                 HandleXrDlrr(dlrr_block);
                 break;
             }
+            //handle rrt as sender
             case XR_RRT:
             {
                 XrRrtData* rrt_block = (XrRrtData*)xr_hdr;

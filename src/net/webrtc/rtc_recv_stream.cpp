@@ -192,6 +192,29 @@ void RtcRecvStream::GenerateNackList(const std::vector<uint16_t>& seq_vec) {
     delete nack_pkt;
 }
 
+void RtcRecvStream::HandleXrDlrr(XrDlrrData* dlrr_block) {
+    uint32_t dlrr  = ntohl(dlrr_block->dlrr);
+    uint32_t lrr   = ntohl(dlrr_block->lrr);
+    int64_t now_ms = now_millisec();
+    NTP_TIMESTAMP ntp = millisec_to_ntp(now_ms);
+    uint32_t compound_now = 0;
+
+    compound_now |= (ntp.ntp_sec & 0xffff) << 16;
+    compound_now |= (ntp.ntp_frac & 0xffff0000) >> 16;
+    
+    if (compound_now < (dlrr + lrr)) {
+        return;
+    }
+    uint32_t rtt = compound_now - dlrr - lrr;
+    float rtt_float = ((rtt & 0xffff0000) >> 16) * 1000.0;
+    rtt_float += ((rtt & 0xffff) / 65536.0) * 1000.0;
+
+
+    avg_rtt_ += ((int64_t)rtt_float - avg_rtt_)/5;
+
+    return;
+}
+
 void RtcRecvStream::HandleRtcpSr(RtcpSrPacket* sr_pkt) {
     int64_t now_ms = now_millisec();
     NTP_TIMESTAMP ntp;
@@ -233,8 +256,17 @@ RtcpRrBlockInfo* RtcRecvStream::GetRtcpRr(int64_t now_ms) {
 }
 
 void RtcRecvStream::OnTimer(int64_t now_ms) {
-
+    SendXrRrt(now_ms);
     RequestKeyFrame(now_ms);
+}
+
+void RtcRecvStream::SendXrRrt(int64_t now_ms) {
+    XrRrt rrt;
+    NTP_TIMESTAMP ntp_now = millisec_to_ntp(now_ms);
+    rrt.SetSsrc(ssrc_);
+    rrt.SetNtp(ntp_now.ntp_sec, ntp_now.ntp_frac);
+    
+    send_cb_->SendRtcpPacket(rrt.GetData(), rrt.GetDataLen());
 }
 
 void RtcRecvStream::RequestKeyFrame(int64_t now_ms) {

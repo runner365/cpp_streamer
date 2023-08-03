@@ -392,7 +392,7 @@ void RtcSendStream::HandleRtcpNack(RtcpFbNack* nack_pkt) {
     }
 }
 
-void RtcSendStream::HandleXrDlrr(XrDlrrData* dlrr_block) {
+void RtcSendStream::HandleXrRrt(XrRrtData* rrt_block) {
 
 }
 
