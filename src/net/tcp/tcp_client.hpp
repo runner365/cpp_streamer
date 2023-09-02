@@ -102,31 +102,37 @@ public:
     void Connect(const std::string& host, uint16_t dst_port) {
         int r = 0;
         char port_sz[80];
+        std::string dst_ip;
 
-        snprintf(port_sz, sizeof(port_sz), "%d", dst_port);
-        addrinfo hints;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
+        if (!IsIPv4(host)) {
+            snprintf(port_sz, sizeof(port_sz), "%d", dst_port);
+            addrinfo hints;
+            memset(&hints, 0, sizeof(hints));
+            hints.ai_family = AF_UNSPEC;
+            hints.ai_socktype = SOCK_STREAM;
 
-        addrinfo* ai  = NULL;
-        LogInfof(logger_, "getaddrinfo host:%s, port:%s, ssl:%s", 
-                host.c_str(), port_sz, ssl_enable_ ? "true" : "false");
-        if(getaddrinfo(host.c_str(), port_sz, (const addrinfo*)&hints, &ai)) {
-            throw CppStreamException("get address info error");
+            addrinfo* ai  = NULL;
+            LogInfof(logger_, "getaddrinfo host:%s, port:%s, ssl:%s", 
+                    host.c_str(), port_sz, ssl_enable_ ? "true" : "false");
+            if(getaddrinfo(host.c_str(), port_sz, (const addrinfo*)&hints, &ai)) {
+                throw CppStreamException("get address info error");
+            }
+            freeaddrinfo(ai);
+            assert(sizeof(dst_addr_) == ai->ai_addrlen);
+
+            memcpy((void*)&dst_addr_, ai->ai_addr, sizeof(dst_addr_));
+            dst_ip = GetIpStr(ai->ai_addr, dst_port);
+        } else {
+            GetIpv4Sockaddr(host, htons(dst_port), (struct sockaddr*)&dst_addr_);
+            dst_ip = GetIpStr((sockaddr*)&dst_addr_, dst_port);
         }
-        freeaddrinfo(ai);
 
         //if ((r = uv_ip4_addr(host.c_str(), dst_port, &dst_addr_)) != 0) {
         //    throw CppStreamException("connect address error");
         //}
         connect_->data = this;
-        assert(sizeof(dst_addr_) == ai->ai_addrlen);
-
-        std::string dst_ip = GetIpStr(ai->ai_addr, dst_port);
         LogInfof(logger_, "start connect host:%s:%d", dst_ip.c_str(), htons(dst_port));
 
-        memcpy((void*)&dst_addr_, ai->ai_addr, sizeof(dst_addr_));
         if ((r = uv_tcp_connect(connect_, client_,
                             (const struct sockaddr*)&dst_addr_,
                             OnUVClientConnected)) != 0) {
@@ -189,6 +195,7 @@ private:
         if (status == 0) {
             is_connect_ = true;
         }
+        LogInfof(logger_, "tcp connected ssl enable:%s", ssl_enable_ ? "true" : "false");
         if (!ssl_enable_) {
             if (callback_) {
                 callback_->OnConnect(status);
