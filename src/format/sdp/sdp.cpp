@@ -382,6 +382,7 @@ int SdpTransform::ParseSsrcGroupFid(const std::string& line) {
     
     StringSplit(ssrcs_string, " ", ssrc_vec);
 
+    LogInfof(logger_, "ParseSsrcGroupFid line:%s", line.c_str());
     if (ssrc_vec.size() < 2) {
         LogErrorf(logger_, "ssrc list size error:%lu", ssrc_vec.size());
         return -1;
@@ -413,9 +414,12 @@ int SdpTransform::ParseSsrcGroupFid(const std::string& line) {
         LogErrorf(logger_, "slave ssrc find error:%u", slave_ssrc);
         return -1;
     }
-    main_iter->second.is_rtx   = true;
-    main_iter->second.rtx_ssrc = main_ssrc;
+    slave_iter->second.is_rtx   = true;
+    slave_iter->second.rtx_ssrc = main_ssrc;
 
+    video_ssrc_     = main_ssrc;
+    video_rtx_ssrc_ = slave_ssrc;
+    LogInfof(logger_, "SsrcGroupFid main ssrc:%u, slave ssrc:%u", main_ssrc, slave_ssrc);
     return 0;
 }
 
@@ -433,6 +437,7 @@ int SdpTransform::ParseLine(std::string line) {
     const std::string rtcp_fb_attr("a=rtcp-fb");
     const std::string ext_attr("a=extmap");
     const std::string ssrc_attr("a=ssrc");
+    const std::string fid_attr = "a=ssrc-group:FID";
 
     RemoveSubfix(line, "\r");
 
@@ -504,6 +509,13 @@ int SdpTransform::ParseLine(std::string line) {
     if (pos == 0) {
         return ParseExtMap(line);
     }
+
+    //a=ssrc-group:FID 278971352 1282882370
+    pos = line.find(fid_attr);
+    if (pos == 0) {
+        return ParseSsrcGroupFid(line);
+    }
+
     //a=ssrc:1279799722 cname:ZDA1fh2h/FIKv0Lf
     //a=ssrc:1279799722 msid:7d3a1915-764a-43d3-be25-41a12def895a fc115548-c635-4565-85c7-84c3443ea453
     pos = line.find(ssrc_attr);

@@ -45,7 +45,7 @@ public:
         fb_common_header_->padding     = 0;
         fb_common_header_->fmt         = (int)FB_RTP_NACK;
         fb_common_header_->packet_type = RTCP_RTPFB;
-        fb_common_header_->length      = (uint16_t)htons((uint16_t)this->data_len/4) - 1;
+        fb_common_header_->length      = (uint16_t)htons((uint16_t)this->data_len/4 - 1);
 
         nack_header_->sender_ssrc = (uint32_t)htonl(sender_ssrc);
         nack_header_->media_ssrc  = (uint32_t)htonl(media_ssrc);
@@ -188,7 +188,7 @@ private:
         return true;
     }
 
-private:
+public:
     uint8_t data[1500];
     size_t  data_len = 0;
     RtcpFbCommonHeader* fb_common_header_ = nullptr;

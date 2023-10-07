@@ -53,13 +53,15 @@ public:
     }
 
     RtcpSrPacket() {
+        size_t len = sizeof(uint32_t) + sizeof(RtcpSrBlock);
+
         memset(this->data, 0, sizeof(this->data));
         rtcp_header_ = (RtcpCommonHeader*)(this->data);
         rtcp_header_->version     = 2;
         rtcp_header_->padding     = 0;
         rtcp_header_->count       = 0;
         rtcp_header_->packet_type = (uint8_t)RTCP_SR;
-        rtcp_header_->length      = (uint32_t)htons(sizeof(RtcpSrBlock)/sizeof(uint32_t));
+        rtcp_header_->length      = (uint32_t)htons(len/sizeof(uint32_t));
 
         uint32_t* ssrc_p = (uint32_t*)(rtcp_header_ + 1);
         sender_ssrc_ = 1;

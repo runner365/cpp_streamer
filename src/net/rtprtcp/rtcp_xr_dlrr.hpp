@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <vector>
 #include "rtprtcp_pub.hpp"
+#include "rtcp_xr.hpp"
 
 namespace cpp_streamer
 {
@@ -42,18 +43,15 @@ namespace cpp_streamer
 */
 
 typedef struct {
-    uint8_t  bt;
-    uint8_t  reserver;
-    uint16_t block_length;
     uint32_t ssrc;
     uint32_t lrr;
     uint32_t dlrr;
 } XrDlrrData;
 
-inline void InitDlrrBlock(XrDlrrData* dlrr_block) {
-    dlrr_block->bt = XR_DLRR;
-    dlrr_block->reserver = 0;
-    dlrr_block->block_length = htons(3);
+inline void InitDlrrHeader(XrCommonData* dlrr_header) {
+    dlrr_header->bt = XR_DLRR;
+    dlrr_header->reserver = 0;
+    dlrr_header->block_length = htons(3);
 }
 
 class XrDlrr
@@ -86,40 +84,42 @@ public:
 
     void AddrDlrrBlock(uint32_t ssrc, uint32_t lrr, uint32_t dlrr) {
         if (dlrr_block == nullptr) {
-            ssrc_p = (uint32_t*)(header + 1);
-            dlrr_block = (XrDlrrData*)(ssrc_p + 1);
+            ssrc_p      = (uint32_t*)(header + 1);
+            dlrr_header = (XrCommonData*)(ssrc_p + 1);
+            dlrr_block  = (XrDlrrData*)(dlrr_header + 1);
+            InitDlrrHeader(dlrr_header);
         } else {
+            dlrr_header->block_length += htons(3);
             dlrr_block = dlrr_block + 1;
         }
-        InitDlrrBlock(dlrr_block);
 
         dlrr_block->ssrc = htonl(ssrc);
         dlrr_block->lrr  = htonl(lrr);
         dlrr_block->dlrr = htonl(dlrr);
 
         block_count++;
-        
-        header->length = htons((uint16_t)(4 + sizeof(XrDlrrData) * block_count) / 4);
-        data_len = sizeof(RtcpCommonHeader) + 4 + sizeof(XrDlrrData) * block_count;
+
+        size_t len = 4 + sizeof(XrCommonData) + sizeof(XrDlrrData) * block_count;
+        header->length = htons((uint16_t)(len) / 4);
+        data_len = sizeof(RtcpCommonHeader) + 4 + sizeof(XrCommonData) + sizeof(XrDlrrData) * block_count;
         return;
     }
 
     std::vector<XrDlrrData> GetDlrrBlocks() {
         std::vector<XrDlrrData> blocks;
-        XrDlrrData* dlrr_block_item = (XrDlrrData*)(ssrc_p + 1);
+        dlrr_header = (XrCommonData*)(ssrc_p + 1);
         size_t count = 0;
 
-        if (data_len < (sizeof(RtcpCommonHeader) + 4 + sizeof(XrDlrrData))) {
+        if (data_len < (sizeof(RtcpCommonHeader) + 4 + sizeof(XrCommonData) + sizeof(XrDlrrData))) {
             return blocks;
         }
 
-        count = (data_len - sizeof(RtcpCommonHeader) - 4) / sizeof(XrDlrrData);
+        count = (data_len - sizeof(RtcpCommonHeader) - 4 - sizeof(XrCommonData)) / sizeof(XrDlrrData);
+        XrDlrrData* dlrr_block_item = (XrDlrrData*)(dlrr_header + 1);
+
         for (size_t index = 0; index < count; index++) {
             XrDlrrData item;
 
-            item.bt           = dlrr_block_item->bt;
-            item.reserver     = dlrr_block_item->reserver;
-            item.block_length = ntohs(dlrr_block_item->block_length);
             item.ssrc         = ntohl(dlrr_block_item->ssrc);
             item.lrr          = ntohl(dlrr_block_item->lrr);
             item.dlrr         = ntohl(dlrr_block_item->dlrr);
@@ -141,9 +141,10 @@ public:
 private:
     uint8_t data[RTP_PACKET_MAX_SIZE];
     size_t data_len = 0;
-    RtcpCommonHeader* header = nullptr;
+    RtcpCommonHeader* header   = nullptr;
     uint32_t* ssrc_p           = nullptr;
-    XrDlrrData* dlrr_block   = nullptr;
+    XrCommonData* dlrr_header  = nullptr;
+    XrDlrrData* dlrr_block     = nullptr;
     size_t block_count         = 0;
 };
 

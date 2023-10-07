@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include "rtprtcp_pub.hpp"
+#include "rtcp_xr.hpp"
 
 namespace cpp_streamer
 {
@@ -36,17 +37,14 @@ namespace cpp_streamer
 */
 
 typedef struct {
-    uint8_t  bt;
-    uint8_t  reserver;
-    uint16_t block_length;
     uint32_t ntp_sec;
     uint32_t ntp_frac;
 } XrRrtData;
 
-inline void InitRrtBlock(XrRrtData* dlrr_block) {
-    dlrr_block->bt = XR_RRT;
-    dlrr_block->reserver = 0;
-    dlrr_block->block_length = htons(2);
+inline void InitRrtHeader(XrCommonData* dlrr_header) {
+    dlrr_header->bt = XR_RRT;
+    dlrr_header->reserver = 0;
+    dlrr_header->block_length = htons(2);
 }
 
 class XrRrt
@@ -55,18 +53,19 @@ public:
     XrRrt()
     {
         memset(data, 0, sizeof(data));
-        data_len = sizeof(RtcpCommonHeader) + 4 + sizeof(XrRrtData);
+        data_len = sizeof(RtcpCommonHeader) + 4 + sizeof(XrCommonData) + sizeof(XrRrtData);
 
         header = (RtcpCommonHeader*)data;
         header->version = 2;
         header->padding = 0;
         header->count   = 0;
         header->packet_type = RTCP_XR;
-        header->length      = htons((sizeof(RtcpCommonHeader) + 4 + sizeof(XrRrtData))/4 - 1);
+        header->length      = htons((data_len)/4 - 1);
 
         ssrc_p = (uint32_t*)(header + 1);
-        rrt_block = (XrRrtData*)(ssrc_p + 1);
-        InitRrtBlock(rrt_block);
+        XrCommonData* rrt_header = (XrCommonData*)(ssrc_p + 1);
+        InitRrtHeader(rrt_header);
+        rrt_block = (XrRrtData*)(rrt_header + 1);
     }
     ~XrRrt()
     {

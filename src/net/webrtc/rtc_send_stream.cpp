@@ -281,6 +281,7 @@ void RtcSendStream::SaveBuffer(RtpPacket* pkt) {
             delete info.pkt;
             info.pkt = nullptr;
         }
+        //LogInfof(logger_, "save buffer seq:%d, index:%lu", pkt->GetSeq(), index);
         info.pkt         = pkt->Clone(nullptr);
         info.retry_count = 0;
         info.last_ms     = 0;
@@ -374,6 +375,9 @@ void RtcSendStream::HandleRtcpRr(RtcpRrBlockInfo& block) {
 void RtcSendStream::HandleRtcpNack(RtcpFbNack* nack_pkt) {
     std::vector<uint16_t> lost_seqs = nack_pkt->GetLostSeqs();
 
+    for (RtcpNackBlock* block : nack_pkt->nack_blocks_) {
+        LogInfof(logger_, "nack block packetId:0x%04x, mask:0x%04x", ntohs(block->packet_id), ntohs(block->lost_bitmap));
+    }
     std::stringstream ss;
     ss << "[";
     for (auto seq : lost_seqs) {
