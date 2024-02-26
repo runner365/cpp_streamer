@@ -159,10 +159,10 @@ protected:
             }
             UdpReqInfo* wr = (UdpReqInfo*)req;
             if (wr) {
-                free(wr);
                 if (wr->buf.base) {
                     free(wr->buf.base);
                 }
+                free(wr);
             }
             return;
         }

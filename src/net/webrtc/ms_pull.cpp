@@ -208,6 +208,7 @@ void MsPull::BroadCasterRequest() {
 
     req_json["id"]              = userId_;
     req_json["displayName"]     = userId_;
+    req_json["userName"]     = userId_;
     device_json["name"]         = "cpp_streamer";
     req_json["device"]          = device_json;
     req_json["rtpCapabilities"] = rtp_json;
