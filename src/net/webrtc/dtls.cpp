@@ -245,6 +245,7 @@ RtcDtls::~RtcDtls()
 }
 
 int RtcDtls::GenPrivateKey() {
+    LogInfof(logger_, "openssl version:%08x", OPENSSL_VERSION_NUMBER);
 #if OPENSSL_VERSION_NUMBER < 0x30000000L /* OpenSSL 3.0 */
     EC_GROUP *ecgroup = NULL;
 #else

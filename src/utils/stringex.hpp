@@ -31,6 +31,17 @@ inline int StringSplit(const std::string& input_str, const std::string& split_st
     return output_vec.size();
 }
 
+inline std::string DataToString(char* data, size_t len) {
+    char print_data[4*1024];
+    size_t str_len = 0;
+
+    size_t total = sizeof(print_data);
+    for (size_t i = 0; i < len; i++) {
+        str_len += snprintf(print_data + str_len, total - str_len,  "%c", data[i]);
+    }
+    return print_data;
+}
+
 inline std::string DataToString(uint8_t* data, size_t len) {
     char print_data[4*1024];
     size_t print_len = 0;
@@ -46,6 +57,19 @@ inline std::string DataToString(uint8_t* data, size_t len) {
     }
     return std::string(print_data);
 }
+
+inline std::string Uint32ToString(uint32_t value) {
+    std::string ret = "";
+    char c = (char)((value >> 24) & 0xff);
+    ret += ((c != 0) ? c : ' ');
+    c = (char)((value >> 16) & 0xff);
+    ret += ((c != 0) ? c : ' ');
+    c = (char)((value >> 8) & 0xff);
+    ret += ((c != 0) ? c : ' ');
+    c = (char)(value & 0xff);
+    ret += ((c != 0) ? c : ' ');
+    return ret;
+};
 
 inline void String2Lower(std::string& data) {
     for (auto& c : data) {

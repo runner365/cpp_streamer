@@ -15,7 +15,7 @@
 namespace cpp_streamer
 {
 
-#define LOGGER_BUFFER_SIZE (20*1024)
+#define LOGGER_BUFFER_SIZE (200*1024)
 
 enum LOGGER_LEVEL {
     LOGGER_DEBUG_LEVEL,
@@ -86,6 +86,13 @@ private:
     bool console_enable_ = false;
 };
 
+inline void LogError(Logger* logger, const char* data) {
+    if (logger == nullptr || logger->GetLevel() > LOGGER_INFO_LEVEL) {
+        return;
+    }
+    logger->Logf("W", data);
+}
+
 inline void LogErrorf(Logger* logger, const char* fmt, ...) {
     if (logger == nullptr || logger->GetLevel() > LOGGER_ERROR_LEVEL) {
         return;
@@ -100,6 +107,13 @@ inline void LogErrorf(Logger* logger, const char* fmt, ...) {
     va_end(ap);
 
     logger->Logf("E", buffer);
+}
+
+inline void LogWarn(Logger* logger, const char* data) {
+    if (logger == nullptr || logger->GetLevel() > LOGGER_INFO_LEVEL) {
+        return;
+    }
+    logger->Logf("W", data);
 }
 
 inline void LogWarnf(Logger* logger, const char* fmt, ...) {
@@ -118,6 +132,13 @@ inline void LogWarnf(Logger* logger, const char* fmt, ...) {
     logger->Logf("W", buffer);
 }
 
+inline void LogInfo(Logger* logger, const char* data) {
+    if (logger == nullptr || logger->GetLevel() > LOGGER_INFO_LEVEL) {
+        return;
+    }
+    logger->Logf("I", data);
+}
+
 inline void LogInfof(Logger* logger, const char* fmt, ...) {
     if (logger == nullptr || logger->GetLevel() > LOGGER_INFO_LEVEL) {
         return;
@@ -127,11 +148,20 @@ inline void LogInfof(Logger* logger, const char* fmt, ...) {
     va_list ap;
  
     va_start(ap, fmt);
-    int ret_len = vsnprintf(buffer, bsize, fmt, ap);
-    buffer[ret_len] = 0;
+    vsnprintf(buffer, bsize, fmt, ap);
+    //int ret_len = vsnprintf(buffer, bsize, fmt, ap);
+    //buffer[ret_len] = 0;
     va_end(ap);
 
+    //std::cout << "loginfo size:" << bsize << ", str len:" << ret_len << "\r\n\r\n";
     logger->Logf("I", buffer);
+}
+
+inline void LogDebug(Logger* logger, const char* data) {
+    if (logger == nullptr || logger->GetLevel() > LOGGER_INFO_LEVEL) {
+        return;
+    }
+    logger->Logf("D", data);
 }
 
 inline void LogDebugf(Logger* logger, const char* fmt, ...) {
@@ -147,7 +177,7 @@ inline void LogDebugf(Logger* logger, const char* fmt, ...) {
     buffer[ret_len] = 0;
     va_end(ap);
 
-    logger->Logf("I", buffer);
+    logger->Logf("D", buffer);
 }
 
 inline void LogInfoData(Logger* logger, uint8_t* data, size_t len, const char* dscr) {

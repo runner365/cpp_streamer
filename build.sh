@@ -11,6 +11,15 @@ case $1 in
      cmake ..
      make -j 2
      ;;
+    m1)
+     if [ -d "objs" ];then
+          rm -rf objs
+     fi
+     mkdir objs
+     cd objs
+     cmake .. -DMAC_ARM=YES
+     make -j 2
+     ;;
 
      *)
      if [ ! -d "objs" ];then

@@ -136,6 +136,9 @@ public:
     }
 
     void Send(const char* data, size_t len) {
+        if (!is_connect_) {
+            return;
+        }
         if (ssl_enable_) {
             ssl_client_->SslWrite((uint8_t*)data, len);
             return;
@@ -155,6 +158,9 @@ public:
     }
 
     void AsyncRead() {
+        if (!is_connect_) {
+            return;
+        }
         if (read_start_) {
             return;
         }

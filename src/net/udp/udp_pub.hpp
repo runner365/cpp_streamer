@@ -90,11 +90,25 @@ public:
     }
     ~UdpSessionBase()
     {
+        Close();
     }
 
 public:
     uv_loop_t* GetLoop() { return loop_; }
 
+    std::string GetLocalAddress(uint16_t& port) {
+        std::string ip;
+        struct sockaddr addr;
+        int addr_len = sizeof(addr);
+
+        int ret = uv_udp_getsockname(&udp_handle_, &addr, &addr_len);
+        if (ret != 0) {
+            return ip;
+        }
+        ip = GetIpStr(&addr, port);
+        return ip;
+    }
+    
     void Write(const char* data, size_t len, UdpTuple remote_address) {
         struct sockaddr_in send_addr;
         UdpReqInfo* req = (UdpReqInfo*)malloc(sizeof(UdpReqInfo));
@@ -127,6 +141,14 @@ public:
         }
     }
 
+    void Close() {
+        if (close_flag_) {
+            return;
+        }
+        close_flag_ = true;
+        uv_udp_recv_stop(&udp_handle_);
+    }
+
 protected:
     void OnAlloc(uv_buf_t* buf) {
         buf->base = recv_buffer_;
@@ -138,6 +160,9 @@ protected:
             const uv_buf_t* buf,
             const struct sockaddr* addr,
             unsigned flags) {
+        if (close_flag_) {
+            return;
+        }
         if (cb_) {
             if (nread > 0) {
                 uint16_t remote_port = 0;
@@ -152,6 +177,9 @@ protected:
     }
 
     void OnWrite(uv_udp_send_t* req, int status) {
+        if (close_flag_) {
+            return;
+        }
         UdpTuple addr;
         if (status != 0) {
             if (cb_) {
@@ -159,10 +187,10 @@ protected:
             }
             UdpReqInfo* wr = (UdpReqInfo*)req;
             if (wr) {
-                free(wr);
                 if (wr->buf.base) {
                     free(wr->buf.base);
                 }
+                free(wr);
             }
             return;
         }
@@ -186,6 +214,7 @@ protected:
     UdpSessionCallbackI* cb_ = nullptr;
     Logger* logger_          = nullptr;
     uv_udp_t udp_handle_;
+    bool close_flag_ = false;
 
 protected:
     char recv_buffer_[UDP_DATA_BUFFER_MAX];

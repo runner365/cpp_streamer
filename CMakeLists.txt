@@ -23,6 +23,7 @@ include_directories(${CMAKE_BINARY_DIR}/output/include
                     src
                     src/format
                     src/format/flv
+                    src/format/mp4
                     src/format/mpegts
                     src/format/amf
                     src/format/sdp
@@ -95,6 +96,19 @@ IF (APPLE)
 target_link_libraries(mpegtsdemux pthread dl z m)
 ELSEIF (UNIX)
 target_link_libraries(mpegtsdemux pthread rt dl z m)
+ENDIF ()
+
+################################################################
+## mp4demux streamer module
+add_library(mp4demux SHARED
+            ./src/format/audio_header.cpp
+            ./src/format/h264_h265_header.cpp
+            ./src/format/opus_header.cpp
+            ./src/format/mp4/mp4_demux.cpp)
+IF (APPLE)
+target_link_libraries(mp4demux pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(mp4demux pthread rt dl z m)
 ENDIF ()
 
 ################################################################

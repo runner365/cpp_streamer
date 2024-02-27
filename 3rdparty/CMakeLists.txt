@@ -7,6 +7,18 @@ set(EXTRA_LIBS "-lm -pthread -ldl")
 add_subdirectory(libuv)
 
 IF (APPLE)
+    IF(MAC_ARM)
+ExternalProject_Add(openssl
+    URL ${CMAKE_CURRENT_SOURCE_DIR}/openssl-1.1.1.tar.gz
+    SOURCE_DIR  ${CMAKE_CURRENT_BINARY_DIR}/openssl
+    BUILD_IN_SOURCE 1
+    CONFIGURE_COMMAND
+        ./Configure darwin64-arm64-cc --prefix=${PREFIX_DIR} no-asm no-shared
+        --libdir=${PREFIX_DIR}/lib
+    BUILD_COMMAND make -j 4
+    INSTALL_COMMAND make install_sw
+    )
+    ELSE()
 ExternalProject_Add(openssl
     URL ${CMAKE_CURRENT_SOURCE_DIR}/openssl-1.1.1.tar.gz
     SOURCE_DIR  ${CMAKE_CURRENT_BINARY_DIR}/openssl
@@ -17,6 +29,7 @@ ExternalProject_Add(openssl
     BUILD_COMMAND make -j 4
     INSTALL_COMMAND make install_sw
     )
+    ENDIF ()
 ELSEIF (UNIX)
 ExternalProject_Add(openssl
     URL ${CMAKE_CURRENT_SOURCE_DIR}/openssl-1.1.1.tar.gz
