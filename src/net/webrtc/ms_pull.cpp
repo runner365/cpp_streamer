@@ -359,9 +359,13 @@ void MsPull::ParseVideoConsume(const std::string& data) {
         CSM_THROW_ERROR("fail to get ssrc in video consume");
     }
 
-    std::string video_mid_str = rtp_parameter_json["mid"];
-    int video_mid = atoi(video_mid_str.c_str());
-    pc_->SetVideoMid(SDP_ANSWER, video_mid);
+    auto mid_iter = rtp_parameter_json.find("mid");
+    if (mid_iter != rtp_parameter_json.end() && mid_iter->is_string())
+    {
+        std::string video_mid_str = rtp_parameter_json["mid"];
+        int video_mid = atoi(video_mid_str.c_str());
+        pc_->SetVideoMid(SDP_ANSWER, video_mid);
+    }
 
     auto codecs_array = rtp_parameter_json["codecs"];
     for(auto& codec : codecs_array) {
@@ -436,9 +440,12 @@ void MsPull::ParseAudioConsume(const std::string& data) {
         CSM_THROW_ERROR("fail to get ssrc in audio consume");
     }
 
-    std::string audio_mid_str = rtp_parameter_json["mid"];
-    int audio_mid = atoi(audio_mid_str.c_str());
-    pc_->SetAudioMid(SDP_ANSWER, audio_mid);
+    auto mid_iter = rtp_parameter_json.find("mid");
+    if (mid_iter != rtp_parameter_json.end() && mid_iter->is_string()) {
+        std::string audio_mid_str = rtp_parameter_json["mid"];
+        int audio_mid = atoi(audio_mid_str.c_str());
+        pc_->SetAudioMid(SDP_ANSWER, audio_mid);
+    }
 
     auto codecs_array = rtp_parameter_json["codecs"];
     for(auto& codec : codecs_array) {
