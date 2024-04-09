@@ -208,7 +208,6 @@ bool AnnexB2Avcc(uint8_t* data, size_t len, std::vector<std::shared_ptr<DataBuff
 
 bool Avcc2Nalus(uint8_t* data, size_t len, std::vector<std::shared_ptr<DataBuffer>>& nalus);
 
-
 int GetSpsPpsFromExtraData(uint8_t *pps, size_t& pps_len, 
                            uint8_t *sps, size_t& sps_len, 
                            const uint8_t *extra_data, size_t extra_len);

@@ -2,6 +2,7 @@
 #define MP4_BOX_HPP
 #include "byte_stream.hpp"
 #include "stringex.hpp"
+#include "av.hpp"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -36,13 +37,6 @@ class DrefBox;
 class TrakBox;
 class UdtaBox;
 
-typedef enum ENUM_MOV_MEDIA_TYPE_S {
-    UNKNOWN_BOX_TYPE,
-    VIDEO_BOX_TYPE,
-    AUDIO_BOX_TYPE,
-    SUBTITLE_BOX_TYPE
-} ENUM_MOV_MEDIA_TYPE;
-
 inline uint64_t GetBoxHeaderInfo(uint8_t* p, std::string& box_type, int& offset) {
     uint64_t box_size = ByteStream::Read4Bytes(p);
 
@@ -57,6 +51,94 @@ inline uint64_t GetBoxHeaderInfo(uint8_t* p, std::string& box_type, int& offset)
     
     return box_size;
 }
+
+typedef struct SampleEntry_S
+{
+    uint32_t sample_count_;
+    uint32_t samples_delta_;
+} SampleEntry;
+
+typedef struct SampleOffset_S {
+    uint32_t sample_counts_;
+    uint32_t sample_offsets_;//cts = pts - dts;
+} SampleOffset;
+
+typedef struct ChunkSample_S {
+    uint32_t first_chunk_;
+    uint32_t samples_per_chunk_;
+    uint32_t sample_description_index_;
+} ChunkSample;
+
+typedef struct MovItem_S {
+    MEDIA_PKT_TYPE av_type_;
+    MEDIA_CODEC_TYPE codec_type_;
+    size_t offset;
+    size_t len;
+    int64_t dts;//microsecond
+    int64_t pts;//microsecond
+    int64_t timescale_;//1000000
+    bool is_keyframe_;
+} MovItem;
+
+class TrakInfo
+{
+public:
+    TrakInfo()
+    {
+    }
+    ~TrakInfo()
+    {
+    }
+
+public:
+    uint32_t track_id_;
+    uint32_t timescale_;
+    double duration_;//microsecond
+    std::string handler_type_;// "soun", "vide"
+    MEDIA_CODEC_TYPE codec_type_ = MEDIA_CODEC_UNKOWN;
+
+    uint32_t width_;
+    uint32_t height_;
+    uint32_t horizontal_resolution_;
+    uint32_t vertical_resolution_;
+
+    uint16_t channelcount_;
+    uint16_t samplesize_;
+    uint32_t samplerate_;
+    uint32_t buffer_size_;
+    uint32_t max_bit_rate_;
+    uint32_t avg_bit_rate_;
+
+    std::vector<uint8_t> sequence_data_;
+    std::vector<SampleEntry> sample_entries_;//stts: sample, duration for dts
+    std::vector<SampleOffset> sample_offset_vec_;//ctts: sample cts list(cts = pts - dts) to get pts
+    std::vector<uint32_t> iframe_sample_vec_;//stss: sample I frame position
+    std::vector<ChunkSample> chunk_sample_vec_;//stsc: {first_chunk, sample_per_chunk, desc_index}
+    std::vector<uint32_t> sample_sizes_vec_;//stsz: each sample size
+    std::vector<uint32_t> chunk_offsets_vec_;//stco: each chunk offset
+};
+
+class MovInfo
+{
+public:
+    MovInfo()
+    {
+    }
+    ~MovInfo()
+    {
+    }
+
+public:
+    std::string major_brand_;
+    uint32_t minor_version_;
+    std::vector<std::string> compatible_brands_;
+
+    double duration_ = 0;//microsecond
+    uint32_t next_track_id_ = 0;
+
+public:
+    std::vector<TrakInfo> traks_info_;
+};
 
 class Mp4BoxBase
 {
@@ -79,6 +161,19 @@ public:
         offset_ = 8;
         return start + 8;
     }
+
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "\"" << type_ << "\"";
+        ss << ":";
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << "";
+        ss << "}";
+
+        return ss.str();
+    }
 public:
     uint64_t box_size_ = 0;
     std::string type_;
@@ -98,17 +193,20 @@ public:
     FtypBox() { type_ = "ftyp"; }
     ~FtypBox() {}
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
         major_brand_ = ByteStream::Read4Bytes(p);
+        mov.major_brand_ = Uint32ToString(major_brand_);
         p += 4;
         minor_version_ = ByteStream::Read4Bytes(p);
+        mov.minor_version_ = minor_version_;
         p += 4;
 
         int i = 0;
         while (p < (start + box_size_)) {
             brands_count_++;
             compatible_brands_[i++] = ByteStream::Read4Bytes(p);
+            mov.compatible_brands_.push_back(Uint32ToString(compatible_brands_[i-1]));
             p += 4;
         }
         assert(p == (start + box_size_));
@@ -149,7 +247,7 @@ public:
     MvhdBox() { type_ = "mvhd"; }
     ~MvhdBox() {}
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
 
         version_flag_ = ByteStream::Read4Bytes(p);
@@ -161,6 +259,12 @@ public:
         timescale_ = ByteStream::Read4Bytes(p);
         p += 4;
         duration_ = ByteStream::Read4Bytes(p);
+        if (timescale_ != 0) {
+            mov.duration_ = duration_ * 1000000.0 / timescale_;
+        } else {
+            mov.duration_ = duration_ * 1.0;
+        }
+        
         p += 4;
         rate_ = ByteStream::Read4Bytes(p);
         p += 4;
@@ -182,6 +286,7 @@ public:
             p += 4;
         }
         next_track_id_ = ByteStream::Read4Bytes(p);
+        mov.next_track_id_ = next_track_id_;
         p += 4;
 
         assert(p == (start + box_size_));
@@ -241,8 +346,9 @@ public:
     TkhdBox() { type_ = "tkhd"; }
     ~TkhdBox() {}
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
 
         version_flag_ = ByteStream::Read4Bytes(p);
         uint8_t ver = (uint8_t)(version_flag_ >> 24);
@@ -255,12 +361,14 @@ public:
         p += (ver == 0) ? 4 : 8;
 
         track_id_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].track_id_ = track_id_;
         p += 4;
 
         reserved1_ = ByteStream::Read4Bytes(p);
         p += 4;
 
         duration_ = (ver == 0) ? ByteStream::Read4Bytes(p) : ByteStream::Read8Bytes(p);
+        mov.traks_info_[index].duration_ = duration_ * 1.0;
         p += (ver == 0) ? 4 : 8;
 
         reserved2_[0] = ByteStream::Read4Bytes(p);
@@ -288,9 +396,11 @@ public:
         }
 
         width_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].width_ = width_ >> 16;
         p += 4;
 
         height_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].height_ = height_ >> 16;
         p += 4;
 
         assert(p == start + box_size_);
@@ -368,8 +478,9 @@ public:
     ~MdhdBox() {}
 
 public:
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
         
         version_flag_ = ByteStream::Read4Bytes(p);
         p += 4;
@@ -393,6 +504,8 @@ public:
             duration_ = ByteStream::Read8Bytes(p);
             p += 8;
         }
+        mov.traks_info_[index].duration_ = duration_ * 1000000.0 / timescale_;
+        mov.traks_info_[index].timescale_ = timescale_;
         return start + box_size_;
     }
 
@@ -431,8 +544,9 @@ public:
     HdlrBox() { type_ = "hdlr"; }
     ~HdlrBox() {}
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
 
         version_flag_ = ByteStream::Read4Bytes(p);
         p += 4;
@@ -447,11 +561,8 @@ public:
         handler_descr_ = std::string((char*)p, start + box_size_ - p);
 
         std::string type_str = Uint32ToString(handler_type_);
-        if (type_str == "soun") {
-            media_type_ = AUDIO_BOX_TYPE;
-        } else if (type_str == "vide") {
-            media_type_ = VIDEO_BOX_TYPE;
-        }
+        mov.traks_info_[index].handler_type_ = type_str;
+
         return start + box_size_;
     }
 
@@ -483,8 +594,6 @@ public:
     uint32_t handler_type_ = 0;//"vide" or "soun"
     uint32_t reserved_[3];
     std::string handler_descr_;
-
-    ENUM_MOV_MEDIA_TYPE media_type_ = UNKNOWN_BOX_TYPE;
 };
 
 //smhd is in minf
@@ -616,7 +725,12 @@ class DrefBox : public Mp4BoxBase
 {
 public:
     DrefBox() { type_ = "dref"; }
-    ~DrefBox() {}
+    ~DrefBox() {
+        for (UrlBox* box : urls_box_) {
+            delete box;
+        }
+        urls_box_.clear();
+    }
 
     uint8_t* Parse(uint8_t* start) {
         uint8_t* p = Mp4BoxBase::Parse(start);
@@ -665,7 +779,12 @@ class DinfBox : public Mp4BoxBase
 {
 public:
     DinfBox() { type_ = "dinf"; }
-    ~DinfBox() {}
+    ~DinfBox() {
+        if (dref_) {
+            delete dref_;
+            dref_ = nullptr;
+        }
+    }
 
     uint8_t* Parse(uint8_t* start) {
         uint8_t* p = Mp4BoxBase::Parse(start);
@@ -690,21 +809,45 @@ public:
     DrefBox* dref_ = nullptr;
 };
 
+static MEDIA_CODEC_TYPE GetCodecTypeByBoxType(const std::string& box_type) {
+    if (box_type == "avcC") {
+        return MEDIA_CODEC_H264;
+    } else if (box_type == "hvcC") {
+        return MEDIA_CODEC_H265;
+    } else if (box_type == "vvcC") {
+        return MEDIA_CODEC_H266;
+    } else if (box_type == "av1C") {
+        return MEDIA_CODEC_AV1;
+    }
+
+    if (box_type == "mp4a") {
+        return MEDIA_CODEC_AAC;
+    } else if (box_type == "Opus") {
+        return MEDIA_CODEC_OPUS;
+    }
+    return MEDIA_CODEC_UNKOWN;
+}
+
 //next box: avcC(h264), hvcC(h265), av1C(av1), vvcC(h266), vpcC(vp8, vp9)
-class VideoSequencBox : public Mp4BoxBase
+class VideoSequenceBox : public Mp4BoxBase
 {
 public:
-    VideoSequencBox() {}
-    ~VideoSequencBox() {}
+    VideoSequenceBox() {}
+    ~VideoSequenceBox() {}
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
 
         size_t data_len = box_size_ - 8;
 
+        mov.traks_info_[index].codec_type_ = GetCodecTypeByBoxType(type_);
         data_.resize(data_len);
+        mov.traks_info_[index].sequence_data_.resize(data_len);
         uint8_t* header = (uint8_t*)&(data_[0]);
 
+        memcpy(header, p, data_len);
+        header = (uint8_t*)&(mov.traks_info_[index].sequence_data_[0]);
         memcpy(header, p, data_len);
 
         return start + box_size_;
@@ -766,6 +909,388 @@ public:
     uint32_t v_spacing_ = 0;
 };
 
+class BtrtBox : public Mp4BoxBase
+{
+public:
+    BtrtBox() {
+        type_ = "btrt";
+    }
+    ~BtrtBox() {
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        buffer_size_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].buffer_size_ = buffer_size_;
+        p += 4;
+
+        max_bit_rate_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].max_bit_rate_ = max_bit_rate_;
+        p += 4;
+
+        avg_bit_rate_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].avg_bit_rate_ = avg_bit_rate_;
+        p += 4;
+
+        assert(p == start + box_size_);
+
+        return start + box_size_;
+    }
+
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"buffer_size\":" << buffer_size_ << ",";
+        ss << "\"max_bit_rate\":" << max_bit_rate_ << ",";
+        ss << "\"avg_bit_rate\":" << avg_bit_rate_;
+        ss << "}";
+
+        return ss.str();
+    }
+public:
+    uint32_t buffer_size_;
+    uint32_t max_bit_rate_;
+    uint32_t avg_bit_rate_;
+};
+
+class EsdsBox : public Mp4BoxBase
+{
+public:
+    EsdsBox() {
+        type_ = "esds";
+    }
+    ~EsdsBox() {
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        es_descr_tag_ = *p;//default 0x03
+        p++;
+        es_descr_len_ = GetDescLen(p);//3 + 5+13 + decoder_specific_info_len + 5+1
+        p += 4;
+
+        es_id_ = ByteStream::Read2Bytes(p);
+        p += 2;
+
+        uint8_t flag = *p;
+        p++;
+        stream_dependence_flag_ = (flag >> 7) & 0x01;
+        url_flag_ = (flag >> 6) & 0x01;
+        ocr_stream_flag_ = (flag >> 5) & 0x01;
+        stream_priority_ = flag & 0x1f;
+
+        if (stream_dependence_flag_) {
+            dependson_es_id_ = ByteStream::Read2Bytes(p);
+            p += 2;
+        }
+        if (url_flag_) {
+            url_length_ = *p++;
+            url_string_ = *p++;
+        }
+        if (ocr_stream_flag_) {
+            ocr_es_id_ = ByteStream::Read2Bytes(p);
+            p += 2;
+        }
+
+        dec_conf_descr_tag_ = *p;//default: 0x04
+        p++;
+        decoder_specific_info_len_ = GetDescLen(p);//13 + decoder_specific_info_len
+        p += 4;
+
+        object_type_indication_ = *p;
+        p++;
+
+        flag = *p;
+        streamtype_ = (flag >> 2) & 0x3f;
+        upstream_ = (flag >> 1) & 0x01;
+        p++;
+        
+        buffer_size_ = ByteStream::Read3Bytes(p);
+        mov.traks_info_[index].buffer_size_ = buffer_size_;
+        p += 3;
+
+        maxbitrate_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].max_bit_rate_ = maxbitrate_;
+        p += 4;
+
+        avg_bit_rate_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].avg_bit_rate_ = avg_bit_rate_;
+        p += 4;
+
+        dec_specific_info_tag_ = *p;//0x05
+        p++;
+        extra_data_len_ = GetDescLen(p);
+        p += 4;
+
+        if (extra_data_len_ > 0) {
+            extra_data_.resize(extra_data_len_);
+            mov.traks_info_[index].sequence_data_.resize(extra_data_len_);
+
+            uint8_t* ext_data = (uint8_t*)(&extra_data_[0]);
+
+            memcpy(ext_data, p, extra_data_len_);
+            ext_data = (uint8_t*)(&mov.traks_info_[index].sequence_data_[0]);
+            memcpy(ext_data, p, extra_data_len_);
+        }
+
+        assert(p <= start + box_size_);
+        return start + box_size_;
+    }
+
+    uint32_t GetDescLen(uint8_t* p) {
+        uint32_t ret = 0;
+
+        for (int i = 3; i > 0; i--) {
+            uint8_t unit = *p;
+            ret += (((uint32_t)unit) << (i*7)) & 0x7f;
+            p++;
+        }
+        ret += *p & 0x7f;
+
+        return ret;
+    }
+
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << version_ << ",";
+
+        ss << "\"es_descr_tag\":" << (int)es_descr_tag_ << ",";
+        ss << "\"es_descr_len\":" << es_descr_len_ << ",";
+
+        ss << "\"es_id\":" << es_id_ << ",";
+        ss << "\"stream_dependence_flag\":" << (int)stream_dependence_flag_ << ",";
+        ss << "\"url_flag\":" << (int)url_flag_ << ",";
+        ss << "\"ocr_stream_flag\":" << (int)ocr_stream_flag_ << ",";
+        ss << "\"stream_priority\":" << (int)stream_priority_ << ",";
+        ss << "\"dependson_es_id_\":" << dependson_es_id_ << ",";
+
+        if (url_flag_) {
+            ss << "\"url_length\":" << (int)url_length_ << ",";
+            ss << "\"url_string\":" << (int)url_string_ << ",";
+        }
+        if (ocr_stream_flag_) {
+            ss << "\"ocr_es_id\":" << ocr_es_id_ << ",";
+        }
+        ss << "\"dec_conf_descr_tag\":" << (int)dec_conf_descr_tag_ << ",";
+        ss << "\"decoder_specific_info_len\":" << decoder_specific_info_len_ << ",";
+        ss << "\"object_type_indication\":" << (int)object_type_indication_ << ",";
+        ss << "\"streamtype\":" << (int)streamtype_ << ",";
+        ss << "\"upstream\":" << (int)upstream_ << ",";
+        ss << "\"buffer_size\":" << buffer_size_ << ",";
+        ss << "\"maxbitrate\":" << maxbitrate_ << ",";
+        ss << "\"avg_bit_rate\":" << avg_bit_rate_ << ",";
+
+        ss << "\"dec_specific_info_tag\":" << (int)dec_specific_info_tag_ << ",";
+        ss << "\"extra_data_len\":" << extra_data_len_ << ",";
+
+        ss << "\"extra_data\":[";
+        
+        size_t index = 0;
+        for (uint8_t unit : extra_data_) {
+            ss << (int)unit;
+            index++;
+            if (index < extra_data_.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_;
+    
+    //7.2.6.5 ES_Descriptor
+    uint8_t es_descr_tag_ = 0x03;
+    uint32_t es_descr_len_;
+    
+    uint16_t es_id_;
+    uint8_t stream_dependence_flag_;//1bit
+    uint8_t url_flag_;//1bit
+    uint8_t ocr_stream_flag_;//1bit
+    uint8_t stream_priority_;//5bits
+    uint16_t dependson_es_id_;//if (stream_dependence_flag_ == 1)
+
+    //if (url_flag_ == 1)
+    uint8_t url_length_;
+    uint8_t url_string_;
+
+    //if (ocr_stream_flag_ == 1)
+    uint16_t  ocr_es_id_;
+
+    //7.2.6.6 DecoderConfigDescriptor in ISO_IEC_14496-1.pdf
+    //DecoderConfigDescriptor(0x04) below
+    uint8_t dec_conf_descr_tag_ = 0x04;
+    uint32_t decoder_specific_info_len_;
+    //DecoderConfigDescriptor items
+    uint8_t object_type_indication_;
+    uint8_t streamtype_;//6bits
+    uint8_t upstream_;//1bit
+    uint32_t buffer_size_;//24bits
+    uint32_t maxbitrate_;
+    uint32_t avg_bit_rate_;
+    
+    //DecoderSpecificInfo(0x05) below
+    uint8_t dec_specific_info_tag_ = 0x05;
+    uint32_t extra_data_len_;
+    
+    std::vector<uint8_t> extra_data_;
+
+    uint8_t sl_descriptor_ = 0x06;
+    uint32_t sl_descriptor_len_ = 1;
+    uint8_t sl_flag_ = 0x02;
+};
+
+class Mp4aBox : public Mp4BoxBase
+{
+public:
+    Mp4aBox() {
+        type_ = "mp4a";
+    }
+    ~Mp4aBox() {
+        if (esds_) {
+            delete esds_;
+            esds_ = nullptr;
+        }
+        if (btrt_) {
+            delete btrt_;
+            btrt_ = nullptr;
+        }
+
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        reserved1_ = ByteStream::Read4Bytes(p);
+        p += 4;
+        reserved2_ = ByteStream::Read2Bytes(p);
+        p += 2;
+        data_ref_index_ = ByteStream::Read2Bytes(p);
+        p += 2;
+
+        version_ = ByteStream::Read2Bytes(p);
+        p += 2;
+        revision_level_ = ByteStream::Read2Bytes(p);
+        p += 2;
+
+        reserved3_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        channelcount_ = ByteStream::Read2Bytes(p);
+        mov.traks_info_[index].channelcount_ = channelcount_;
+        p += 2;
+
+        samplesize_ = ByteStream::Read2Bytes(p);
+        mov.traks_info_[index].samplesize_ = samplesize_;
+        p += 2;
+
+        pre_defined_ = ByteStream::Read2Bytes(p);
+        p += 2;
+        reserved4_ = ByteStream::Read2Bytes(p);
+        p += 2;
+
+        samplerate_ = ByteStream::Read4Bytes(p) >> 16;
+        mov.traks_info_[index].samplerate_ = samplerate_;
+        p += 4;
+
+        while (p < start + box_size_) {
+            std::string box_type;
+            int offset = 0;
+            GetBoxHeaderInfo(p, box_type, offset);
+
+            if (box_type == "esds") {
+                esds_ = new EsdsBox();
+                p = esds_->Parse(p, mov);
+            } else if (box_type == "btrt") {
+                btrt_ = new BtrtBox();
+                p = btrt_->Parse(p, mov);
+            } else {
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p += box->box_size_;
+                unknown_boxes_.push_back(box);
+            }
+        }
+
+        assert(p == start + box_size_);
+        return start + box_size_;
+    }
+
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"data_ref_index\":" << data_ref_index_ << ",";
+        ss << "\"version\":" << version_ << ",";
+        ss << "\"revision_level\":" << revision_level_ << ",";
+        ss << "\"channelcount\":" << channelcount_ << ",";
+        ss << "\"samplesize\":" << samplesize_ << ",";
+        ss << "\"pre_defined\":" << pre_defined_ << ",";
+        ss << "\"samplerate\":" << samplerate_;
+        if (esds_) {
+            ss << ",";
+            ss << "\"esds\":" << esds_->Dump();
+        }
+        if (btrt_) {
+            ss << ",";
+            ss << "\"btrt\":" << btrt_->Dump();
+        }
+        if (unknown_boxes_.size() > 0) {
+            size_t index = 0;
+            ss << ",";
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
+        ss << "}";
+        return ss.str();
+    }
+
+public:
+    uint32_t reserved1_;
+    uint16_t reserved2_;
+    uint16_t data_ref_index_;
+    uint16_t version_;
+    uint16_t revision_level_;
+    uint32_t reserved3_;
+    uint16_t channelcount_;
+    uint16_t samplesize_;
+    uint16_t pre_defined_;
+    uint16_t reserved4_;
+    uint32_t samplerate_;
+
+    EsdsBox* esds_ = nullptr;
+    BtrtBox* btrt_ = nullptr;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
+};
+
 class Avc1Box : public Mp4BoxBase
 {
 public:
@@ -773,10 +1298,24 @@ public:
         type_ = "avc1";
         memset(compressorname_, 0, sizeof(compressorname_));
     }
-    ~Avc1Box() {}
+    ~Avc1Box() {
+        if (video_hdr_box_) {
+            delete video_hdr_box_;
+            video_hdr_box_ = nullptr;
+        }
+        if (pasp_box_) {
+            delete pasp_box_;
+            pasp_box_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
 
         reserved1_ = ByteStream::Read4Bytes(p);
         p += 4;
@@ -794,13 +1333,17 @@ public:
             p += 4;
         }
         width_ = ByteStream::Read2Bytes(p);
+        mov.traks_info_[index].width_ = width_;
         p += 2;
         height_ = ByteStream::Read2Bytes(p);
+        mov.traks_info_[index].height_ = height_;
         p += 2;
 
         horizontal_resolution_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].horizontal_resolution_ = horizontal_resolution_;
         p += 4;
         vertical_resolution_ = ByteStream::Read4Bytes(p);
+        mov.traks_info_[index].vertical_resolution_ = vertical_resolution_;
         p += 4;
 
         data_size_ = ByteStream::Read4Bytes(p);
@@ -818,22 +1361,29 @@ public:
         p += 2;
 
         //next box: avcC(h264), hvcC(h265), av1C(av1), vvcC(h266), vpcC(vp8, vp9)
-        video_hdr_box_ = new VideoSequencBox();
-        p = video_hdr_box_->Parse(p);
-
-        std::cout << "avc1 p:" << (uint64_t)p << ", start:" << (uint64_t)start << ", box_size:" << box_size_ << "\r\n\r\n";
+        video_hdr_box_ = new VideoSequenceBox();
+        p = video_hdr_box_->Parse(p, mov);
 
         if(p == start + box_size_) {
             return start + box_size_;
         }
 
-        std::string box_type;
-        int offset = 0;
-        GetBoxHeaderInfo(p, box_type, offset);
-        if (box_type == "pasp") {
-            pasp_box_ = new PaspBox();
-            p = pasp_box_->Parse(p);
+        while (p < start + box_size_) {
+            std::string box_type;
+            int offset = 0;
+            GetBoxHeaderInfo(p, box_type, offset);
+            if (box_type == "pasp") {
+                pasp_box_ = new PaspBox();
+                p = pasp_box_->Parse(p);
+            } else {
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p += box->box_size_;
+
+                unknown_boxes_.push_back(box);
+            }
         }
+
         assert(p == start + box_size_);
 
         return start + box_size_;
@@ -863,7 +1413,7 @@ public:
         ss << "\"horizontal_resolution\":" << horizontal_resolution_ << ",";
         ss << "\"vertical_resolution_\":" << vertical_resolution_ << ",";
         ss << "\"data_size\":" << data_size_ << ",";
-        ss << "\"frame_count_\":" << frame_count_ << ",";
+        ss << "\"frame_count\":" << frame_count_ << ",";
         ss << "\"compressorname\":[";
         for (size_t i = 0; i < sizeof(compressorname_); i++) {
             ss << (int)compressorname_[i];
@@ -878,6 +1428,17 @@ public:
         if (pasp_box_) {
             ss << ",";
             ss << "\"pasp\":" << pasp_box_->Dump();
+        }
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
         }
         ss << "}";
 
@@ -901,37 +1462,80 @@ public:
     uint16_t alpha_ = 0x18;
     uint16_t reserved4_ = 0xffff;
 
-    VideoSequencBox* video_hdr_box_ = nullptr;
+    VideoSequenceBox* video_hdr_box_ = nullptr;
     PaspBox* pasp_box_ = nullptr;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
 //stsd is in stbl, 
 class StsdBox : public Mp4BoxBase
 {
 public:
-    StsdBox(ENUM_MOV_MEDIA_TYPE media_type) {
+    StsdBox() {
         type_ = "stsd";
-        media_type_ = media_type;
     }
-    ~StsdBox() {}
+    ~StsdBox() {
+        if (avc1_box_) {
+            delete avc1_box_;
+            avc1_box_ = nullptr;
+        }
+        if (mp4a_box_) {
+            delete mp4a_box_;
+            mp4a_box_ = nullptr;
+        }
 
-    uint8_t* Parse(uint8_t* start) {
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
 
         version_flag_ = ByteStream::Read4Bytes(p);
         p += 4;
         entry_count_ = ByteStream::Read4Bytes(p);
         p += 4;
 
-        std::string box_type;
-        int offset = 0;
+        for (size_t i = 0; i < entry_count_; i++) {
+            uint64_t media_box_size;
+            std::string media_box_type;
+            int offset = 0;
 
-        GetBoxHeaderInfo(p, box_type, offset);
-        if (box_type == "avc1") {
-            avc1_box_ = new Avc1Box();
-            p = avc1_box_->Parse(p);
-        } else if (box_type == "mp4a") {
-            p = start + box_size_;
+            media_box_size = GetBoxHeaderInfo(p, media_box_type, offset);
+            assert(media_box_size < box_size_);
+
+            box_type_vec_.push_back(media_box_type);
+            if (mov.traks_info_[index].handler_type_ == "vide") {
+                if (media_box_type == "avc1") {
+                    avc1_box_ = new Avc1Box();
+                    p = avc1_box_->Parse(p, mov);
+                } else {
+                    Mp4BoxBase* box = new Mp4BoxBase();
+                    box->Parse(p);
+                    p = p + box->box_size_;
+                    unknown_boxes_.push_back(box);
+                }
+            } else if (mov.traks_info_[index].handler_type_ == "soun") {
+                mov.traks_info_[index].codec_type_ = GetCodecTypeByBoxType(media_box_type);
+                if (media_box_type == "mp4a") {
+                    mp4a_box_ = new Mp4aBox();
+                    p = mp4a_box_->Parse(p, mov);
+                } else {
+                    Mp4BoxBase* box = new Mp4BoxBase();
+                    box->Parse(p);
+                    p = p + box->box_size_;
+                    unknown_boxes_.push_back(box);
+                }
+            } else {
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p = p + box->box_size_;
+                unknown_boxes_.push_back(box);
+            }
+            assert(p <= start + box_size_);
         }
         assert(p == start + box_size_);
 
@@ -945,13 +1549,33 @@ public:
         ss << "\"type\":\"" << type_ << "\",";
         ss << "\"size\":" << box_size_ << ",";
         ss << "\"version\":" << (version_flag_ >> 24) << ",";
-        ss << "\"flag\":" << (version_flag_ & 0xffffff);
-        std::cout << "media_type:" << media_type_ << ", avc1 box:" << (uint64_t)avc1_box_ << "\r\n\r\n";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+        ss << "\"entry_count\":" << (entry_count_ & 0xffffff);
 
-        if (media_type_ == VIDEO_BOX_TYPE && avc1_box_ != nullptr) {
+        for (size_t i = 0; i < entry_count_; i++) {
             ss << ",";
-            ss << "\"avc1\":" << avc1_box_->Dump();
-        };
+            if (box_type_vec_[i] == "avc1" && avc1_box_ != nullptr) {
+                ss << "\"avc1\":" << avc1_box_->Dump();
+                continue;
+            };
+            if (box_type_vec_[i] == "mp4a" && mp4a_box_ != nullptr) {
+                ss << "\"mp4a\":" << mp4a_box_->Dump();
+                continue;
+            }
+            ss << "\"unknown_box_type:\"" << box_type_vec_[i];
+        }
+
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
         ss << "}";
         
         return ss.str();
@@ -960,22 +1584,434 @@ public:
 public:
     uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
     uint32_t entry_count_  = 0;
+    std::vector<std::string> box_type_vec_;
     Avc1Box* avc1_box_ = nullptr;
+    Mp4aBox* mp4a_box_ = nullptr;
 
-    ENUM_MOV_MEDIA_TYPE media_type_ = UNKNOWN_BOX_TYPE;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
+};
+
+//stts is in stbl
+class SttsBox : public Mp4BoxBase
+{
+public:
+    SttsBox() { type_ = "stts"; }
+    ~SttsBox() {}
+public:
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_flag_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        entry_count_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        for (size_t i = 0; i < entry_count_; i++) {
+            SampleEntry entry;
+            entry.sample_count_ = ByteStream::Read4Bytes(p);
+            p += 4;
+            entry.samples_delta_ = ByteStream::Read4Bytes(p);
+            p += 4;
+            sample_entries_.push_back(entry);
+            mov.traks_info_[index].sample_entries_.push_back(entry);
+            assert(p <= start + box_size_);
+        }
+
+        assert(p == start + box_size_);
+        return start + box_size_;
+    }
+
+    std::string Dump() {
+        std::stringstream ss;
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << ((version_flag_ >> 24) & 0xff) << ",";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+        ss << "\"entry_count\":" << entry_count_;
+
+        if (entry_count_ > 0) {
+            ss << ",";
+            ss << "\"entries\": [";
+            for (size_t i = 0; i < entry_count_; i++) {
+                ss << "{";
+                ss << "\"sample_count\":" << sample_entries_.at(i).sample_count_ << ",";
+                ss << "\"samples_delta\":" << sample_entries_.at(i).samples_delta_;
+                ss << "}";
+                if (i < entry_count_ - 1) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
+    uint32_t entry_count_  = 0;
+    std::vector<SampleEntry> sample_entries_;
+};
+
+//stss is in stbl: I frame sample position list
+class StssBox : public Mp4BoxBase
+{
+public:
+    StssBox() { type_ = "stss"; }
+    ~StssBox() {}
+
+public:
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_flag_ = ByteStream::Read4Bytes(p);
+        p += 4;
+        entry_count_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        for (size_t i = 0; i < entry_count_; i++) {
+            uint32_t samples = ByteStream::Read4Bytes(p);
+            p += 4;
+
+            iframe_sample_vec_.push_back(samples);
+            mov.traks_info_[index].iframe_sample_vec_.push_back(samples);
+        }
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << ((version_flag_ >> 24) & 0xff) << ",";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+        ss << "\"entry_count\":" << entry_count_;
+
+        if (entry_count_ > 0) {
+            ss << ",";
+            ss << "\"iframe_samples\":[";
+            for (size_t i = 0; i < entry_count_; i++) {
+                ss << iframe_sample_vec_[i];
+                if (i < entry_count_ - 1) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
+    uint32_t entry_count_  = 0;
+    std::vector<uint32_t> iframe_sample_vec_;
+};
+
+//ctts is in stbl
+class CttsBox : public Mp4BoxBase
+{
+public:
+    CttsBox() { type_ = "ctts"; }
+    ~CttsBox() {}
+
+public:
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_flag_ = ByteStream::Read4Bytes(p);
+        p += 4;
+        entry_count_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        for (size_t i = 0; i < entry_count_; i++) {
+            SampleOffset sample_cts;
+
+            sample_cts.sample_counts_ = ByteStream::Read4Bytes(p);
+            p += 4;
+            sample_cts.sample_offsets_ = ByteStream::Read4Bytes(p);
+            p += 4;
+
+            sample_offset_vec_.push_back(sample_cts);
+            mov.traks_info_[index].sample_offset_vec_.push_back(sample_cts);
+
+            assert(p <= start + box_size_);
+        }
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << ((version_flag_ >> 24) & 0xff) << ",";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+        ss << "\"entry_count\":" << entry_count_;
+
+        if (entry_count_ > 0) {
+            ss << ",";
+            ss << "\"cts_offsets\":[";
+            for (size_t i = 0; i < entry_count_; i++) {
+                ss << "{";
+                ss << "\"sample_count\":" << sample_offset_vec_[i].sample_counts_ << ",";
+                ss << "\"sample_offsets\":" << sample_offset_vec_[i].sample_offsets_;
+                ss << "}";
+                if (i < entry_count_ - 1) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
+    uint32_t entry_count_  = 0;
+
+    std::vector<SampleOffset> sample_offset_vec_;
+};
+
+//stsc is in stbl
+class StscBox : public Mp4BoxBase
+{
+public:
+    StscBox() { type_ = "stsc"; }
+    ~StscBox() {}
+public:
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_flag_ = ByteStream::Read4Bytes(p);
+        p += 4;
+        entry_count_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        for (size_t i = 0; i < entry_count_; i++) {
+            if (p >= start + box_size_) {
+                break;
+            }
+            ChunkSample cs;
+
+            cs.first_chunk_ = ByteStream::Read4Bytes(p);
+            p += 4;
+            cs.samples_per_chunk_ = ByteStream::Read4Bytes(p);
+            p += 4;
+            cs.sample_description_index_ = ByteStream::Read4Bytes(p);
+            p += 4;
+
+            chunk_sample_vec_.push_back(cs);
+            mov.traks_info_[index].chunk_sample_vec_.push_back(cs);
+        }
+        assert(p == start + box_size_);
+
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << ((version_flag_ >> 24) & 0xff) << ",";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+        ss << "\"entry_count\":" << entry_count_;
+
+        if (entry_count_ > 0) {
+            ss << ",";
+            ss << "\"chunk_samples\":[";
+            for (size_t i = 0; i < entry_count_; i++) {
+                ss << "{";
+                ss << "\"first_chunk\":" << chunk_sample_vec_[i].first_chunk_ << ",";
+                ss << "\"samples_per_chunk\":" << chunk_sample_vec_[i].samples_per_chunk_ << ",";
+                ss << "\"sample_desc_index\":" << chunk_sample_vec_[i].sample_description_index_;
+                ss << "}";
+                if (i < entry_count_ - 1) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
+    uint32_t entry_count_  = 0;
+    std::vector<ChunkSample> chunk_sample_vec_;
+};
+
+//stsz is in stbl
+class StszBox : public Mp4BoxBase
+{
+public:
+    StszBox() { type_ = "stsz"; }
+    ~StszBox() {}
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_flag_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        constant_size_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        sample_count_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        if (constant_size_ == 0) {
+            sample_sizes_vec_.resize(sample_count_);
+            mov.traks_info_[index].sample_sizes_vec_.resize(sample_count_);
+            for (size_t i = 0; i < sample_count_; i++) {
+                sample_sizes_vec_[i] = ByteStream::Read4Bytes(p);
+                mov.traks_info_[index].sample_sizes_vec_[i] = sample_sizes_vec_[i];
+                p += 4;
+            }
+        }
+        assert(p == start + box_size_);
+
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << ((version_flag_ >> 24) & 0xff) << ",";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+
+        ss << "\"constant_size\":" << constant_size_ << ",";
+        ss << "\"sample_count\":" << sample_count_;
+
+        if (constant_size_ == 0) {
+            ss << ",";
+            ss << "\"samples_size\":[";
+            for (size_t i = 0; i < sample_count_; i++) {
+                ss << sample_sizes_vec_[i];
+                if (i < sample_count_ - 1) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
+    uint32_t constant_size_ = 0;
+    uint32_t sample_count_ = 0;
+    std::vector<uint32_t> sample_sizes_vec_;
+};
+
+//stco is in stbl
+class StcoBox : public Mp4BoxBase
+{
+public:
+    StcoBox() { type_ = "stco"; }
+    ~StcoBox() {}
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+
+        version_flag_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        entry_count_ = ByteStream::Read4Bytes(p);
+        p += 4;
+
+        chunk_offsets_vec_.resize(entry_count_);
+        mov.traks_info_[index].chunk_offsets_vec_.resize(entry_count_);
+
+        for (size_t i = 0; i < entry_count_; i++) {
+            chunk_offsets_vec_[i] = ByteStream::Read4Bytes(p);
+            mov.traks_info_[index].chunk_offsets_vec_[i] = chunk_offsets_vec_[i];
+            p += 4;
+        }
+        assert(p == start + box_size_);
+
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"version\":" << ((version_flag_ >> 24) & 0xff) << ",";
+        ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
+
+        ss << "\"entry_count\":" << entry_count_;
+        if (entry_count_) {
+            ss << ",";
+            ss << "\"chunk_offsets\":";
+            ss << "[";
+            for (size_t i = 0; i < entry_count_; i++) {
+                ss << chunk_offsets_vec_[i];
+                if (i < entry_count_ - 1) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+
+        ss << "}";
+        return ss.str();
+    }
+public:
+    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
+    uint32_t entry_count_  = 0;
+    std::vector<uint32_t> chunk_offsets_vec_;
 };
 
 //stbl is in minf. it has stsd, stts, stsc, stsz, stco, sgpd, sbgp
 class StblBox : public Mp4BoxBase
 {
 public:
-    StblBox(ENUM_MOV_MEDIA_TYPE media_type) {
+    StblBox() {
         type_ = "stbl";
-        media_type_ = media_type;
     }
-    ~StblBox() {}
+    ~StblBox() {
+        if (stsd_) {
+            delete stsd_;
+            stsd_ = nullptr;
+        }
+        if (stts_) {
+            delete stts_;
+            stts_ = nullptr;
+        }
+        if (ctts_) {
+            delete ctts_;
+            ctts_ = nullptr;
+        }
+        if (stss_) {
+            delete stss_;
+            stss_ = nullptr;
+        }
+        if (stsc_) {
+            delete stsc_;
+            stsc_ = nullptr;
+        }
+        if (stsz_) {
+            delete stsz_;
+            stsz_ = nullptr;
+        }
+        if (stco_) {
+            delete stco_;
+            stco_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
         std::string box_type;
         int offset = 0;
@@ -983,12 +2019,31 @@ public:
         while(p < start + box_size_) {
             GetBoxHeaderInfo(p, box_type, offset);
             if (box_type == "stsd") {
-                stsd_ = new StsdBox(media_type_);
-                p = stsd_->Parse(p);
+                stsd_ = new StsdBox();
+                p = stsd_->Parse(p, mov);
+            } else if (box_type == "stts") {
+                stts_ = new SttsBox();
+                p = stts_->Parse(p, mov);
+            } else if (box_type == "ctts") {
+                ctts_ = new CttsBox();
+                p = ctts_->Parse(p, mov);
+            } else if (box_type == "stss") {
+                stss_ = new StssBox();
+                p = stss_->Parse(p, mov);
+            } else if (box_type == "stsc") {
+                stsc_ = new StscBox();
+                p = stsc_->Parse(p, mov);
+            } else if (box_type == "stsz") {
+                stsz_ = new StszBox();
+                p = stsz_->Parse(p, mov);
+            } else if (box_type == "stco") {
+                stco_ = new StcoBox();
+                p = stco_->Parse(p, mov);
             } else {
-                std::cout << "unknown box type:" << box_type << "\r\n\r\n";
-                p = start + box_size_;
-                break;
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                unknown_boxes_.push_back(box);
+                p += box->box_size_;
             }
         }
         assert(p == start + box_size_);
@@ -999,34 +2054,94 @@ public:
         std::stringstream ss;
         ss << "{";
         ss << "\"type\":\"" << type_ << "\",";
-        ss << "\"size\":" << box_size_ << ",";
-        ss << "\"stsd\":" << stsd_->Dump();
-        ss << "}";
+        ss << "\"size\":" << box_size_;
 
-        std::cout << "stbl box dump:" << stsd_->Dump() << "\r\n\r\n";
+        if (stsd_) {
+            ss << ",";
+            ss << "\"stsd\":" << stsd_->Dump();
+        }
+
+        if (stts_) {
+            ss << ",";
+            ss << "\"stts\":" << stts_->Dump();
+        }
+
+        if (ctts_) {
+            ss << ",";
+            ss << "\"ctts\":"  << ctts_->Dump();
+        }
+        if (stss_) {
+            ss << ",";
+            ss << "\"stss\":"  << stss_->Dump();
+        }
+        if (stsc_) {
+            ss << ",";
+            ss << "\"stsc\":"  << stsc_->Dump();
+        }
+        if (stsz_) {
+            ss << ",";
+            ss << "\"stsz\":"  << stsz_->Dump();
+        }
+        if (stco_) {
+            ss << ",";
+            ss << "\"stco\":"  << stco_->Dump();
+        }
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
+        ss << "}";
         return ss.str();
     }
 public:
     StsdBox* stsd_ = nullptr;
     SttsBox* stts_ = nullptr;
+    CttsBox* ctts_ = nullptr;
+    StssBox* stss_ = nullptr;
     StscBox* stsc_ = nullptr;
     StszBox* stsz_ = nullptr;
     StcoBox* stco_ = nullptr;
-
-    ENUM_MOV_MEDIA_TYPE media_type_;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
 //minf is in mdia. minf has smhd, dinf and stbl
 class MinfBox : public Mp4BoxBase
 {
 public:
-    MinfBox(ENUM_MOV_MEDIA_TYPE media_type) {
+    MinfBox() {
         type_ = "minf";
-        media_type_ = media_type;
     }
-    ~MinfBox() {}
+    ~MinfBox() {
+        if (smhd_) {
+            delete smhd_;
+            smhd_ = nullptr;
+        }
+        if (vmhd_) {
+            delete vmhd_;
+            vmhd_ = nullptr;
+        }
+        if (dinf_) {
+            delete dinf_;
+            dinf_ = nullptr;
+        }
+        if (stbl_) {
+            delete stbl_;
+            stbl_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
         std::string box_type;
         int offset = 0;
@@ -1043,11 +2158,13 @@ public:
                 dinf_ = new DinfBox();
                 p = dinf_->Parse(p);
             } else if (box_type == "stbl") {
-                stbl_ = new StblBox(media_type_);
-                p = stbl_->Parse(p);
+                stbl_ = new StblBox();
+                p = stbl_->Parse(p, mov);
             } else {
-                p = start + box_size_;
-                break;
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p += box->box_size_;
+                unknown_boxes_.push_back(box);
             }
         }
         assert(p == (start + box_size_));
@@ -1075,6 +2192,17 @@ public:
             ss << ",";
             ss << "\"stbl\":" << stbl_->Dump();
         }
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
         ss << "}";
         return ss.str();
     }
@@ -1084,7 +2212,7 @@ public:
     DinfBox* dinf_ = nullptr;
     StblBox* stbl_ = nullptr;
 
-    ENUM_MOV_MEDIA_TYPE media_type_ = UNKNOWN_BOX_TYPE;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
 //mdia is in trak
@@ -1092,9 +2220,26 @@ class MdiaBox : public Mp4BoxBase
 {
 public:
     MdiaBox() { type_ = "mdia"; }
-    ~MdiaBox() {}
+    ~MdiaBox() {
+        if (mdhd_) {
+            delete mdhd_;
+            mdhd_ = nullptr;
+        }
+        if (hdlr_) {
+            delete hdlr_;
+            hdlr_ = nullptr;
+        }
+        if (minf_) {
+            delete minf_;
+            minf_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
         std::string box_type;
         int offset = 0;
@@ -1103,18 +2248,18 @@ public:
             (void)GetBoxHeaderInfo(p, box_type, offset);
             if (box_type == "mdhd") {
                 mdhd_ = new MdhdBox();
-                p = mdhd_->Parse(p);
+                p = mdhd_->Parse(p, mov);
             } else if (box_type == "hdlr") {
                 hdlr_ = new HdlrBox();
-                p = hdlr_->Parse(p);
-                media_type_ = hdlr_->media_type_;
+                p = hdlr_->Parse(p, mov);
             } else if (box_type == "minf") {
-                minf_ = new MinfBox(media_type_);
-                p = minf_->Parse(p);
+                minf_ = new MinfBox();
+                p = minf_->Parse(p, mov);
             } else {
-                std::cout << "unknown box type:" << box_type << "\r\n\r\n";
-                p = start + box_size_;
-                break;
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                unknown_boxes_.push_back(box);
+                p += box->box_size_;
             }
         }
         assert(p == (start + box_size_));
@@ -1140,6 +2285,17 @@ public:
             ss << ",";
             ss << "\"minf\":" << minf_->Dump();
         }
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
         ss << "}";
 
         return ss.str();
@@ -1149,100 +2305,7 @@ public:
     HdlrBox* hdlr_ = nullptr;
     MinfBox* minf_ = nullptr;
 
-    ENUM_MOV_MEDIA_TYPE media_type_ = UNKNOWN_BOX_TYPE;
-};
-
-//stts is in stbl
-class SttsBox : public Mp4BoxBase
-{
-public:
-    SttsBox() { type_ = "stts"; }
-    ~SttsBox() {}
-public:
-    typedef struct SampleEntry_S
-    {
-        uint32_t first_chunk_;
-        uint32_t samples_per_chunk_;
-    } SampleEntry;
-
-public:
-    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
-    uint32_t entry_count_  = 0;
-    std::vector<SampleEntry> sample_entry;
-};
-
-//stss is in stbl
-class StssBox : public Mp4BoxBase
-{
-public:
-    StssBox() { type_ = "stss"; }
-    ~StssBox() {}
-public:
-    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
-    uint32_t entry_count_  = 0;
-    std::vector<uint32_t> samples_vec_;
-};
-
-//ctts is in stbl
-class CttsBox : public Mp4BoxBase
-{
-public:
-    CttsBox() { type_ = "ctts"; }
-    ~CttsBox() {}
-
-public:
-    typedef struct SampleOffset_S {
-        uint32_t sample_counts_;
-        uint32_t sample_offsets_;
-    } SampleOffset;
-public:
-    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
-    uint32_t entry_count_  = 0;
-
-    std::vector<SampleOffset> sample_offset_vec_;
-};
-
-//stsc is in stbl
-class StscBox : public Mp4BoxBase
-{
-public:
-    StscBox() { type_ = "stsc"; }
-    ~StscBox() {}
-public:
-    typedef struct ChunkSample_S {
-        uint32_t first_chunk_;
-        uint32_t samples_per_chunk_;
-        uint32_t sample_description_index_;
-    } ChunkSample;
-public:
-    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
-    uint32_t entry_count_  = 0;
-    std::vector<ChunkSample> chunk_sample_vec_;
-};
-
-//stsz is in stbl
-class StszBox : public Mp4BoxBase
-{
-public:
-    StszBox() { type_ = "stsz"; }
-    ~StszBox() {}
-public:
-    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
-    uint32_t constant_size_ = 0;
-    uint32_t size_count_ = 0;
-    std::vector<uint32_t> sample_sizes_vec_;
-};
-
-//stco is in stbl
-class StcoBox : public Mp4BoxBase
-{
-public:
-    StcoBox() { type_ = "stco"; }
-    ~StcoBox() {}
-public:
-    uint32_t version_flag_ = 0;//version: 8 bits, flag:24bits
-    uint32_t entry_count_  = 0;
-    std::vector<uint32_t> chunk_offsets_vec_;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
 //elst is in edts
@@ -1299,7 +2362,7 @@ public:
         ss << "{";
         ss << "\"type\":\"" << type_ << "\",";
         ss << "\"size\":" << box_size_ << ",";
-        ss << "\"version\":" << (version_flag_ >> 24) << ",";
+        ss << "\"version\":" << (int)(version_flag_ >> 24) << ",";
         ss << "\"flag\":" << (version_flag_ & 0xffffff) << ",";
         ss << "\"entry_count_\":" << entry_count_ << (entry_count_ > 0 ? "," : "");
         ss << "\"entries\":[";
@@ -1313,6 +2376,9 @@ public:
             ss << "\"media_rate_integer\":" << elst_list_[i].media_rate_integer_ << ",";
             ss << "\"media_rate_fraction\":" << elst_list_[i].media_rate_fraction_;
             ss << "}";
+            if (i < entry_count_ - 1) {
+                ss << ",";
+            }
         }
         ss << "]";
         ss << "}";
@@ -1331,7 +2397,12 @@ class EdtsBox : public Mp4BoxBase
 {
 public:
     EdtsBox() { type_ = "edts"; }
-    ~EdtsBox() {}
+    ~EdtsBox() {
+        if (elst_) {
+            delete elst_;
+            elst_ = nullptr;
+        }
+    }
 
     uint8_t* Parse(uint8_t* start) {
         uint8_t* p = Mp4BoxBase::Parse(start);
@@ -1419,7 +2490,12 @@ class UdtaBox : public Mp4BoxBase
 {
 public:
     UdtaBox() { type_ = "udta"; }
-    ~UdtaBox() {}
+    ~UdtaBox() {
+        if (meta_) {
+            delete meta_;
+            meta_ = nullptr;
+        }
+    }
 
     uint8_t* Parse(uint8_t* start) {
         uint8_t* p = Mp4BoxBase::Parse(start);
@@ -1457,6 +2533,11 @@ public:
     MdatBox() { type_ = "mdat"; }
     ~MdatBox() {}
 
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        (void)Mp4BoxBase::Parse(start);
+
+        return start + box_size_;
+    }
     std::string Dump() {
         std::stringstream ss;
 
@@ -1474,28 +2555,47 @@ class TrakBox : public Mp4BoxBase
 {
 public:
     TrakBox() { type_ = "trak"; }
-    ~TrakBox() {}
+    ~TrakBox() {
+        if (tkhd_) {
+            delete tkhd_;
+            tkhd_ = nullptr;
+        }
+        if (edts_) {
+            delete edts_;
+            edts_ = nullptr;
+        }
+        if (mdia_) {
+            delete mdia_;
+            mdia_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
 
-    uint8_t* Parse(uint8_t* start) {
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
         
         while(p < start + box_size_) {
             std::string box_type;
             int offset = 0;
 
-            uint64_t box_size = GetBoxHeaderInfo(p, box_type, offset);
+            GetBoxHeaderInfo(p, box_type, offset);
             if (box_type == "tkhd") {
                 tkhd_ = new TkhdBox();
-                p = tkhd_->Parse(p);
+                p = tkhd_->Parse(p, mov);
             } else if (box_type == "edts") {
                 edts_ = new EdtsBox();
                 p = edts_->Parse(p);
             } else if (box_type == "mdia") {
                 mdia_ = new MdiaBox();
-                p = mdia_->Parse(p);
+                p = mdia_->Parse(p, mov);
             } else {
-                std::cout << "unknown box type:" << box_type << "\r\n\r\n";
-                p += box_size;
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p += box->box_size_;
+                unknown_boxes_.push_back(box);
             }
         }
 
@@ -1519,6 +2619,17 @@ public:
             ss << ",";
             ss << "\"mdia\":" << mdia_->Dump();
         }
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
         ss << "}";
 
         return ss.str();
@@ -1528,6 +2639,8 @@ public:
     TkhdBox* tkhd_ = nullptr;
     EdtsBox* edts_ = nullptr;
     MdiaBox* mdia_ = nullptr;
+
+    std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
 //moov is a root box
@@ -1535,9 +2648,27 @@ class MoovBox : public Mp4BoxBase
 {
 public:
     MoovBox() { type_ = "moov"; }
-    ~MoovBox() {}
+    ~MoovBox() {
+        if (mvhd_) {
+            delete mvhd_;
+            mvhd_ = nullptr;
+        }
+        if (udta_) {
+            delete udta_;
+            udta_ = nullptr;
+        }
+        for (TrakBox* trak_box : traks_) {
+            delete trak_box;
+        }
+        traks_.clear();
 
-    uint8_t* Parse(uint8_t* start) {
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
         uint8_t* p = Mp4BoxBase::Parse(start);
         std::string box_type;
         int offset = 0;
@@ -1547,16 +2678,21 @@ public:
             
             if (box_type == "mvhd") {
                 mvhd_ = new MvhdBox();
-                p = mvhd_->Parse(p);
+                p = mvhd_->Parse(p, mov);
             } else if (box_type == "trak") {
                 TrakBox* trak = new TrakBox();
-                p = trak->Parse(p);
+
+                mov.traks_info_.resize(mov.traks_info_.size() + 1);
+                p = trak->Parse(p, mov);
                 traks_.push_back(trak);
             } else if (box_type == "udta") {
                 udta_ = new UdtaBox();
                 p = udta_->Parse(p);
             } else {
-                assert(0);
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p += box->box_size_;
+                unknown_boxes_.push_back(box);
             }
         }
 
@@ -1584,6 +2720,17 @@ public:
         if (udta_) {
             ss << "\"udta\":" << udta_->Dump();
         }
+        if (unknown_boxes_.size() > 0) {
+            ss << ",";
+            size_t index = 0;
+            for (Mp4BoxBase* box : unknown_boxes_) {
+                ss << box->Dump();
+                index++;
+                if (index < unknown_boxes_.size()) {
+                    ss << ",";
+                }
+            }
+        }
         ss << "}";
         
         return ss.str();
@@ -1592,6 +2739,8 @@ public:
     MvhdBox* mvhd_ = nullptr;
     std::vector<TrakBox*> traks_;
     UdtaBox* udta_ = nullptr;
+
+    std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
 //free is a root box

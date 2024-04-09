@@ -44,6 +44,18 @@ ELSEIF (UNIX)
 target_link_libraries(mp4dump pthread rt dl z m)
 ENDIF ()
 
+## example: mp4toflv
+## read a mp4 file --> mp4demux streamer --> dump flv information
+add_executable(mp4toflv
+            ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/mp4toflv_streamer.cpp)
+add_dependencies(mp4toflv mp4demux)
+IF (APPLE)
+target_link_libraries(mp4toflv pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(mp4toflv pthread rt dl z m)
+ENDIF ()
+
 ################################################################
 ## example: flv2flv
 ## read a flv file --> flvdemux streamer --> flvmux streamer --> write a flv file

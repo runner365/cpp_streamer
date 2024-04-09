@@ -84,7 +84,7 @@ public:
         this->typeid_     = pkt_ptr->typeid_;
     }
 
-    std::string Dump() {
+    std::string Dump(bool data_dump = false) {
         std::stringstream ss;
         
         ss << "av type:" << avtype_tostring(av_type_);
@@ -110,6 +110,25 @@ public:
             for (auto& item : metadata_) {
                 ss << "key:" << item.first << ", value:" << item.second << "\r\n";
             }
+        }
+        if (data_dump) {
+            uint8_t* data = (uint8_t*)buffer_ptr_->Data();
+            char print_buffer[2048];
+            size_t print_len = 0;
+
+            ss << "\r\ndata:";
+            for (size_t i = 0; i < buffer_ptr_->DataLen(); i++) {
+                if (i % 16 == 0) {
+                    print_len += snprintf(print_buffer + print_len, sizeof(print_buffer) - print_len, "\r\n");
+                    ss << print_buffer;
+                    print_len = 0;
+                }
+                print_len += snprintf(print_buffer + print_len, sizeof(print_buffer) - print_len, "%02x ", data[i]);
+            }
+            if (print_len > 0) {
+                ss << print_buffer;
+            }
+            ss << "\r\n";
         }
         return ss.str();
     }
@@ -140,6 +159,11 @@ public:
     std::string streamname_;
     uint32_t streamid_ = 0;
     uint8_t typeid_ = 0;
+//mp4 info
+public:
+    std::string box_type_;
+    void* box_ = nullptr;
+    IoReadInterface* io_reader_ = nullptr;
 };
 
 typedef std::shared_ptr<Media_Packet> Media_Packet_Ptr;

@@ -11,6 +11,7 @@ typedef enum {
     MEDIA_UNKOWN_TYPE = 0,
     MEDIA_VIDEO_TYPE = 1,
     MEDIA_AUDIO_TYPE,
+    MEDIA_MOVBOX_TYPE,
     MEDIA_METADATA_TYPE
 } MEDIA_PKT_TYPE;
 
@@ -18,9 +19,11 @@ typedef enum {
     MEDIA_CODEC_UNKOWN = 0,
     MEDIA_CODEC_H264 = 1,
     MEDIA_CODEC_H265,
+    MEDIA_CODEC_H266,
     MEDIA_CODEC_VP8,
     MEDIA_CODEC_VP9,
-    MEDIA_CODEC_AAC = 100,
+    MEDIA_CODEC_AV1,
+    MEDIA_CODEC_AAC = 1000,
     MEDIA_CODEC_OPUS,
     MEDIA_CODEC_MP3
 } MEDIA_CODEC_TYPE;
@@ -177,7 +180,7 @@ inline std::string codectype_tostring(MEDIA_CODEC_TYPE type) {
         case MEDIA_CODEC_MP3:
             return "mp3";
         default:
-            return "unkown";
+            return "unknown";
     }
 }
 
@@ -195,6 +198,11 @@ inline std::string formattype_tostring(MEDIA_FORMAT_TYPE type) {
     }
 }
 
+class IoReadInterface
+{
+public:
+    virtual int Read(size_t offset, uint8_t* data_buffer, size_t data_buffer_len) = 0;
+};
 }
 #endif
 

@@ -186,7 +186,7 @@ inline void LogInfoData(Logger* logger, uint8_t* data, size_t len, const char* d
     }
     char print_data[16*1024];
     size_t print_len = 0;
-    const int MAX_LINES = 12;
+    const int MAX_LINES = 2;
     int line = 0;
     int index = 0;
     print_len += snprintf(print_data, sizeof(print_data), "%s:", dscr);

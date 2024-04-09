@@ -2,7 +2,7 @@
 #include "cpp_streamer_factory.hpp"
 #include "logger.hpp"
 #include "media_packet.hpp"
-#include "format/mp4/mp4_box.hpp"
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -13,7 +13,6 @@
 #include <thread>
 
 using namespace cpp_streamer;
-
 
 static Logger* s_logger = nullptr;
 
@@ -53,22 +52,26 @@ private:
     std::string filename_;
 };
 
-class Mp4DumpMgr : public CppStreamerInterface, public StreamerReport
+class Mp4toFlvStreamerMgr : public CppStreamerInterface, public StreamerReport
 {
 public:
-    Mp4DumpMgr(const std::string& filename)
+    Mp4toFlvStreamerMgr(const std::string& in_filename, const std::string& output_filename):filename_(output_filename)
     {
-        file_reader_ = new Mp4FileReader(filename);
+        reader_ = new Mp4FileReader(in_filename);
     }
-    virtual ~Mp4DumpMgr()
+    virtual ~Mp4toFlvStreamerMgr()
     {
         if (mp4_demux_streamer_) {
             delete mp4_demux_streamer_;
             mp4_demux_streamer_ = nullptr;
         }
-        if (file_reader_) {
-            delete file_reader_;
-            file_reader_ = nullptr;
+        if (flv_mux_streamer_) {
+            delete flv_mux_streamer_;
+            flv_mux_streamer_ = nullptr;
+        }
+        if (reader_) {
+            delete reader_;
+            reader_ = nullptr;
         }
     }
 
@@ -76,25 +79,34 @@ public:
     int MakeStreamers() {
         mp4_demux_streamer_ = CppStreamerFactory::MakeStreamer("mp4demux");
         if (!mp4_demux_streamer_) {
-            LogErrorf(logger_, "make streamer mp4demux error");
+            LogErrorf(logger_, "make streamer mp4 demux error");
             return -1;
         }
         LogInfof(logger_, "make mp4 demux streamer:%p, name:%s", mp4_demux_streamer_, mp4_demux_streamer_->StreamerName().c_str());
         mp4_demux_streamer_->SetLogger(logger_);
         mp4_demux_streamer_->SetReporter(this);
-        mp4_demux_streamer_->AddSinker(this);
+ 
+        flv_mux_streamer_ = CppStreamerFactory::MakeStreamer("flvmux");
+        if (!flv_mux_streamer_) {
+            LogErrorf(logger_, "make streamer flvmux error");
+            return -1;
+        }
+        LogInfof(logger_, "make flv mux streamer:%p, name:%s", flv_mux_streamer_, flv_mux_streamer_->StreamerName().c_str());
+        flv_mux_streamer_->SetLogger(logger_);
+        flv_mux_streamer_->AddSinker(this);
+        flv_mux_streamer_->SetReporter(this);
+        mp4_demux_streamer_->AddSinker(flv_mux_streamer_);
         return 0;
     }
 
     int InputMp4Data(uint8_t* data, size_t data_len) {
         if (!mp4_demux_streamer_) {
-            LogErrorf(logger_, "mp4 demux streamer is not ready");
+            LogErrorf(logger_, "flv demux streamer is not ready");
             return -1;
         }
-        Media_Packet_Ptr pkt_ptr = std::make_shared<Media_Packet>();
+        Media_Packet_Ptr pkt_ptr = std::make_shared<Media_Packet>(data_len);
         pkt_ptr->buffer_ptr_->AppendData((char*)data, data_len);
-        pkt_ptr->io_reader_ = file_reader_;
-
+        pkt_ptr->io_reader_ = reader_;
         mp4_demux_streamer_->SourceData(pkt_ptr);
         return 0;
     }
@@ -109,7 +121,7 @@ public:
 
 public:
     virtual std::string StreamerName() override {
-        return "mp4dump";
+        return "mp4toflv_manager";
     }
     virtual void SetLogger(Logger* logger) override {
         logger_ = logger;
@@ -121,37 +133,10 @@ public:
         return 0;
     }
     virtual int SourceData(Media_Packet_Ptr pkt_ptr) override {
-        if (pkt_ptr->av_type_ == MEDIA_MOVBOX_TYPE) {
-            if (pkt_ptr->box_type_ == "ftyp") {
-                FtypBox* box = (FtypBox*)(pkt_ptr->box_);
-                std::cout << "ftyp box dump:" << box->Dump() << "\r\n";
-            } else if (pkt_ptr->box_type_ == "moov") {
-                MoovBox* box = (MoovBox*)(pkt_ptr->box_);
-                std::cout << "moov box dump:" << box->Dump() << "\r\n";
-            } else if (pkt_ptr->box_type_ == "free") {
-                FreeBox* box = (FreeBox*)(pkt_ptr->box_);
-                std::cout << "free box dump:" << box->Dump() << "\r\n";
-            } else if (pkt_ptr->box_type_ == "mdat") {
-                MdatBox* box = (MdatBox*)(pkt_ptr->box_);
-                std::cout << "mdat box dump:" << box->Dump() << "\r\n";
-            } else {
-                Mp4BoxBase* box = (Mp4BoxBase*)(pkt_ptr->box_);
-                std::cout << "box dump:" << box->Dump() << "\r\n";
-            }
-        } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
-            if (pkt_ptr->is_seq_hdr_) {
-                LogInfof(logger_, "audio sequence header:%s", pkt_ptr->Dump(true).c_str());
-            } else {
-                LogInfof(logger_, "audio data:%s", pkt_ptr->Dump().c_str());
-            }
-        } else if (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE) {
-            if (pkt_ptr->is_seq_hdr_) {
-                LogInfof(logger_, "video sequence header:%s", pkt_ptr->Dump(true).c_str());
-            } else {
-                LogInfof(logger_, "video data:%s", pkt_ptr->Dump(false).c_str());
-            }
-        } else {
-            assert(0);
+        FILE* file_p = fopen(filename_.c_str(), "ab+");
+        if (file_p) {
+            fwrite(pkt_ptr->buffer_ptr_->Data(), 1, pkt_ptr->buffer_ptr_->DataLen(), file_p);
+            fclose(file_p);
         }
         return 0;
     }
@@ -166,32 +151,33 @@ public:
     }
 
 private:
-    void handleVideoSequnceData(const std::vector<uint8_t> sequence_data) {
-    }
-    void handleAudioSequnceData(const std::vector<uint8_t> sequence_data) {
-    }
-private:
     Logger* logger_ = nullptr;
+    std::string filename_;
     CppStreamerInterface* mp4_demux_streamer_ = nullptr;
-    Mp4FileReader* file_reader_ = nullptr;
+    CppStreamerInterface* flv_mux_streamer_ = nullptr;
+    Mp4FileReader* reader_ = nullptr;
 };
 
 int main(int argc, char** argv) {
     char input_mp4_name[128];
+    char output_flv_name[128];
     char log_file[128];
 
     int opt = 0;
     bool input_mp4_name_ready = false;
+    bool output_flv_name_ready = false;
     bool log_file_ready = false;
 
-    while ((opt = getopt(argc, argv, "i:l:h")) != -1) {
+    while ((opt = getopt(argc, argv, "i:o:l:h")) != -1) {
         switch (opt) {
             case 'i': strncpy(input_mp4_name, optarg, sizeof(input_mp4_name)); input_mp4_name_ready = true; break;
+            case 'o': strncpy(output_flv_name, optarg, sizeof(output_flv_name)); output_flv_name_ready = true; break;
             case 'l': strncpy(log_file, optarg, sizeof(log_file)); log_file_ready = true; break;
             case 'h':
             default: 
             {
                 printf("Usage: %s [-i mp4 file name]\n\
+    [-o flv file name]\n\
     [-l log file name]\n",
                     argv[0]); 
                 return -1;
@@ -199,8 +185,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!input_mp4_name_ready) {
-        std::cout << "please input mp4 name\r\n";
+    if (!input_mp4_name_ready || !output_flv_name_ready) {
+        std::cout << "please input/output file name\r\n";
         return -1;
     }
 
@@ -212,18 +198,20 @@ int main(int argc, char** argv) {
     CppStreamerFactory::SetLogger(s_logger);
     CppStreamerFactory::SetLibPath("./output/lib");
 
-    LogInfof(s_logger, "mp4 dump streamer manager is starting, input filename:%s", input_mp4_name);
-
-    auto streamer_mgr_ptr = std::make_shared<Mp4DumpMgr>(input_mp4_name);
+    LogInfof(s_logger, "mp4 to flv streamer manager is starting, input filename:%s, output filename:%s",
+            input_mp4_name, output_flv_name);
+    auto streamer_mgr_ptr = std::make_shared<Mp4toFlvStreamerMgr>(
+        std::string(input_mp4_name),
+        std::string(output_flv_name));
 
     streamer_mgr_ptr->SetLogger(s_logger);
     if (streamer_mgr_ptr->MakeStreamers() < 0) {
-        LogErrorf(s_logger, "call make streamer error");
+        LogErrorf(s_logger, "call GenFlvDemuxStreamer error");
         return -1;
     }
     FILE* file_p = fopen(input_mp4_name, "r");
     if (!file_p) {
-        LogErrorf(s_logger, "open mp4 file error:%s", input_mp4_name);
+        LogErrorf(s_logger, "open flv file error:%s", input_mp4_name);
         return -1;
     }
     uint8_t read_data[2048];
@@ -236,13 +224,14 @@ int main(int argc, char** argv) {
     } while (read_n > 0);
     fclose(file_p);
 
-    LogInfof(s_logger, "mp4 dump done");
+    //std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    LogInfof(s_logger, "mp4 to flv done");
 
     streamer_mgr_ptr = nullptr;
     CppStreamerFactory::ReleaseAll();
     
+    getchar();
     delete s_logger;
-
 
     return 0;
 }
