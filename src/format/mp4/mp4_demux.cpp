@@ -224,15 +224,6 @@ void Mp4Demuxer::handleMovItems() {
                     LogErrorf(logger_, "avcc to nalus error: nalus is empty");
                     continue;
                 }
-                uint32_t nalu_size = ByteStream::Read4Bytes(data);
-
-                if (nalu_size != (item.second.len + 4)) {
-                    LogInfof(logger_, "nalu size:%d, item size:%lu, dts:%ld", nalu_size, item.second.len, item.second.dts);
-                }
-                if (nalus.size() > 1) {
-                    LogInfof(logger_, "nalus size:%lu, dts:%ld", nalus.size(), item.second.dts);
-                    LogInfoData(logger_, data, 5, "nalu data");
-                }
 
                 for (std::shared_ptr<DataBuffer> db_ptr : nalus) {
                     
@@ -548,7 +539,7 @@ void Mp4Demuxer::Output(Media_Packet_Ptr pkt_ptr) {
     if (options_["re"] == "true") {
         waiter_.Wait(pkt_ptr);
     }
-    LogInfof(logger_, "output packet dump:%s", pkt_ptr->Dump(true).c_str());
+    
     for(auto& sinker : sinkers_) {
         sinker.second->SourceData(pkt_ptr);
     }

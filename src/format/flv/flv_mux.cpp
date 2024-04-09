@@ -87,13 +87,13 @@ int FlvMuxer::SourceData(Media_Packet_Ptr pkt_ptr) {
             if (H264_IS_SPS(p[nalu_type_pos])) {
                 memcpy(sps_, p + nalu_type_pos, len - nalu_type_pos);
                 sps_len_ = len - nalu_type_pos;
-                LogInfoData(logger_, sps_, sps_len_, "sps data");
+                // LogInfoData(logger_, sps_, sps_len_, "sps data");
                 return 0;
             }
             if (H264_IS_PPS(p[nalu_type_pos])) {
                 memcpy(pps_, p + nalu_type_pos, len - nalu_type_pos);
                 pps_len_ = len - nalu_type_pos;
-                LogInfoData(logger_, pps_, pps_len_, "pps data");
+                // LogInfoData(logger_, pps_, pps_len_, "pps data");
                 return 0;
             }
 
