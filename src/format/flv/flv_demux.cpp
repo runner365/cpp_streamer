@@ -103,6 +103,7 @@ int FlvDemuxer::HandlePacket() {
             Report("error", "flv header tag must be \"FLV\"");
             return -1;
         }
+        
         if ((p[4] & 0x01) == 0x01) {
             has_video_ = true;
         }
@@ -170,18 +171,6 @@ int FlvDemuxer::HandlePacket() {
             return -1;
         }
         if (p[1] == 0x00) {
-            if ((p[0] & 0xf0) == FLV_AUDIO_AAC_CODEC) {
-                LogInfoData(logger_, p, buffer_.DataLen(), "audio seq data");
-                bool ret = GetAudioInfoByAsc(p + 2, output_pkt_ptr->buffer_ptr_->DataLen() - 2,
-                                       output_pkt_ptr->aac_asc_type_, output_pkt_ptr->sample_rate_,
-                                       output_pkt_ptr->channel_);
-                if (ret) {
-                    LogInfof(logger_, "decode asc to get codec type:%d, sample rate:%d, channel:%d",
-                            output_pkt_ptr->codec_type_, output_pkt_ptr->sample_rate_,
-                            output_pkt_ptr->channel_);
-                }
-                output_pkt_ptr->has_flv_audio_asc_ = true;
-            }
             output_pkt_ptr->is_seq_hdr_ = true;
         } else {
             output_pkt_ptr->is_key_frame_ = true;
@@ -221,17 +210,17 @@ int FlvDemuxer::HandlePacket() {
                 output_pkt_ptr->is_key_frame_ = false;
                 output_pkt_ptr->is_seq_hdr_   = false;
                 //is_ready = false;
-                LogWarnf(logger_, "unkown data[1] byte:0x%02x, tag type:%d, tag data size:%u, tag ts:%u",
+                LogWarnf(logger_, "unknown data[1] byte:0x%02x, tag type:%d, tag data size:%u, tag ts:%u",
                         p[1], tag_type_, tag_data_size_, tag_timestamp_);
                 //return -1;
             }
         }
         ts_delta = ByteStream::Read3Bytes(p + 2);
 
-        if (output_pkt_ptr->codec_type_ == MEDIA_CODEC_H264) {
+        if (output_pkt_ptr->codec_type_ == MEDIA_CODEC_H264 || output_pkt_ptr->codec_type_ == MEDIA_CODEC_H265) {
             uint8_t* nalu = p + header_len;
 
-            if (output_pkt_ptr->is_seq_hdr_) {
+            if (output_pkt_ptr->is_seq_hdr_ && output_pkt_ptr->codec_type_ == MEDIA_CODEC_H264) {
                 if (tag_data_size_ - header_len < 512) {
                     uint8_t sps[512];
                     uint8_t pps[512];
@@ -265,10 +254,22 @@ int FlvDemuxer::HandlePacket() {
                     sps_ptr->buffer_ptr_->AppendData((char*)sps, sps_len);
                     pps_ptr->buffer_ptr_->AppendData((char*)pps, pps_len);
 
-                    output_pkt_ptr->buffer_ptr_->AppendData((char*)p + header_len, tag_data_size_ - header_len);
                     SinkData(sps_ptr);
                     SinkData(pps_ptr);
+                    return 0;
                 }
+           }
+           if (output_pkt_ptr->is_seq_hdr_ && output_pkt_ptr->codec_type_ == MEDIA_CODEC_H265) {
+                uint8_t* nalu = p + header_len;
+                size_t len = tag_data_size_ - header_len;
+                output_pkt_ptr->dts_ = tag_timestamp_;
+                output_pkt_ptr->pts_ = tag_timestamp_ + ts_delta;
+
+                output_pkt_ptr->fmt_type_ = MEDIA_FORMAT_FLV;
+                output_pkt_ptr->buffer_ptr_->Reset();
+                output_pkt_ptr->buffer_ptr_->AppendData((char*)nalu, len);
+                SinkData(output_pkt_ptr);
+                return 0;
            }
         }
     } else if (tag_type_ == FLV_TAG_TYPE_META) {
@@ -293,11 +294,11 @@ int FlvDemuxer::HandlePacket() {
             output_pkt_ptr->dts_ = tag_timestamp_;
             output_pkt_ptr->pts_ = tag_timestamp_ + ts_delta;
 
-            if (output_pkt_ptr->codec_type_ == MEDIA_CODEC_H264) {
+            if (output_pkt_ptr->codec_type_ == MEDIA_CODEC_H264 || output_pkt_ptr->codec_type_ == MEDIA_CODEC_H265) {
                 uint8_t* nalu_data = p + header_len;
                 size_t nalus_len = tag_data_size_ - header_len;
                 std::vector<std::shared_ptr<DataBuffer>> nalus;
-
+                
                 Avcc2Nalus(nalu_data, nalus_len, nalus);
                 for(auto data_ptr : nalus) {
                     nalu_data = (uint8_t*)data_ptr->Data();
@@ -324,6 +325,19 @@ int FlvDemuxer::HandlePacket() {
                 }
             } else {
                 output_pkt_ptr->buffer_ptr_->AppendData((char*)p + header_len, tag_data_size_ - header_len);
+                if ((p[0] & 0xf0) == FLV_AUDIO_AAC_CODEC && p[1] == 0x00) {
+                    LogInfof(logger_, "asc header len:%d", output_pkt_ptr->buffer_ptr_->DataLen() - 2);
+                    LogInfoData(logger_, p + 2, output_pkt_ptr->buffer_ptr_->DataLen() - 2, "asc header");
+                    bool ret = GetAudioInfoByAsc(p + 2, output_pkt_ptr->buffer_ptr_->DataLen() - 2,
+                                           output_pkt_ptr->aac_asc_type_, output_pkt_ptr->sample_rate_,
+                                           output_pkt_ptr->channel_);
+                    if (ret) {
+                        LogInfof(logger_, "decode asc to get codec type:%d, aac codecid:%d, sample rate:%d, channel:%d",
+                                output_pkt_ptr->codec_type_, output_pkt_ptr->aac_asc_type_, output_pkt_ptr->sample_rate_,
+                                output_pkt_ptr->channel_);
+                    }
+                    output_pkt_ptr->has_flv_audio_asc_ = true;
+                }
                 SinkData(output_pkt_ptr);
             }
         }
@@ -337,11 +351,34 @@ int FlvDemuxer::HandlePacket() {
 int FlvDemuxer::DecodeMetaData(uint8_t* data, int data_len, Media_Packet_Ptr pkt_ptr) {
     AMF_ITERM item;
     int index = 0;
+    bool is_key = true;
+    std::stringstream ss;
 
+    ss << "{";
     do {
         if (AMF_Decoder::Decode(data, data_len, item) < 0) {
             LogWarnf(logger_,"metadata decode return data len:%d", data_len);
             return 0;
+        }
+        if (item.amf_type_ == AMF_DATA_TYPE_STRING
+            || item.amf_type_ == AMF_DATA_TYPE_LONG_STRING) {
+            if (is_key) {
+                is_key = false;
+                ss << item.DumpAmf() << ":";
+            } else {
+                is_key = true;
+                ss << item.DumpAmf();
+            }
+        } else {
+            is_key = true;
+            ss << item.DumpAmf();
+        }
+        if (data_len > 0 && is_key) {
+            uint8_t next_amf_type = *data;
+            if (next_amf_type != (uint8_t)AMF_DATA_TYPE_UNKNOWN
+                && next_amf_type != (uint8_t)AMF_DATA_TYPE_OBJECT_END) {
+                ss << ",";
+            }
         }
         if (index == 0) {
             if (item.GetAmfType() != AMF_DATA_TYPE_STRING) {
@@ -380,6 +417,9 @@ int FlvDemuxer::DecodeMetaData(uint8_t* data, int data_len, Media_Packet_Ptr pkt
         index++;
     } while (data_len > 1);
 
+    ss << "}";
+
+    Report("MetaData", ss.str());
     return 0;
 }
 

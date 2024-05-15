@@ -125,6 +125,7 @@ ENDIF ()
 ################################################################
 ## rtmpplay streamer module
 add_library(rtmpplay SHARED
+            ./src/format/h264_h265_header.cpp
             ./src/net/rtmp/chunk_stream.cpp
             ./src/net/rtmp/rtmp_client_session.cpp
             ./src/net/rtmp/rtmp_control_handler.cpp

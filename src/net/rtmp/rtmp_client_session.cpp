@@ -9,10 +9,12 @@ namespace cpp_streamer
 {
 
 RtmpClientSession::RtmpClientSession(uv_loop_t* loop,
-        RtmpClientCallbackI* callback,
+        RtmpClientDataCallbackI* data_cb,
+        RtmpClientCtrlCallbackI* ctrl_cb,
         Logger* logger):RtmpSessionBase(logger)
                         , conn_(loop, this, logger)
-                        , cb_(callback)
+                        , data_cb_(data_cb)
+                        , ctrl_cb_(ctrl_cb)
                         , hs_(this, logger)
                         , ctrl_handler_(this, logger)
                         , logger_(logger)
@@ -82,6 +84,11 @@ int RtmpClientSession::RtmpWrite(Media_Packet_Ptr pkt_ptr) {
 
 int RtmpClientSession::RtmpSend(char* data, int len) {
     conn_.Send(data, len);
+    if (client_phase_ == client_c0c1_phase) {
+        ctrl_cb_->OnRtmpHandShakeSendC0C1(0, (uint8_t*)data, len);
+    } else if (client_phase_ == client_s0s1s2_phase) {
+        ctrl_cb_->OnRtmpHandShakeRecvS0S1S2(0, (uint8_t*)data, len);
+    }
     return 0;
 }
 
@@ -113,11 +120,11 @@ void RtmpClientSession::OnConnect(int ret_code) {
         Close();
         return;
     }
-
+    LogInfof(logger_, "rtmp client tcp connected...");
     client_phase_ = client_c0c1_phase;
     recv_buffer_.Reset();
     (void)hs_.SendC0C1();
-    LogInfof(logger_, "rtmp client connected...");
+    
     TryRead();
 }
 
@@ -133,7 +140,7 @@ void RtmpClientSession::OnRead(int ret_code, const char* data, size_t data_size)
     if (ret_code != 0) {
         LogErrorf(logger_, "rtmp on read error:%d", ret_code);
         //Close();
-        cb_->OnClose(ret_code);
+        ctrl_cb_->OnClose(ret_code);
         return;
     }
 
@@ -142,7 +149,7 @@ void RtmpClientSession::OnRead(int ret_code, const char* data, size_t data_size)
     int ret = HandleMessage();
     if (ret < 0) {
         Close();
-        cb_->OnClose(ret);
+        ctrl_cb_->OnClose(ret);
         return;
     } else if (ret == RTMP_NEED_READ_MORE) {
         LogDebugf(logger_, "HandleMessage need read more...");
@@ -163,26 +170,24 @@ int RtmpClientSession::HandleMessage() {
         ret = hs_.ParseS0S1S2(p, RtmpClientHandshake::s0s1s2_size);
         if (ret < 0) {
             LogErrorf(logger_, "rtmp handshake parse s0s1s3 error:%d", ret);
+            ctrl_cb_->OnRtmpHandShakeRecvS0S1S2(ret, p, RtmpClientHandshake::s0s1s2_size);
             return ret;
         }
+        ctrl_cb_->OnRtmpHandShakeRecvS0S1S2(ret, p, RtmpClientHandshake::s0s1s2_size);
+        client_phase_ = client_s0s1s2_phase;
         ret = hs_.SendC2();
         if (ret < 0) {
             LogErrorf(logger_, "rtmp handshake send c2 error:%d", ret);
             return ret;
         }
-        LogInfof(logger_, "rtmp client handshake is done");
 
         client_phase_ = client_connect_phase;
-        if (cb_) {
-            cb_->OnRtmpHandShake(0);
-        }
         //send rtmp connect
         ret = RtmpConnect();
         if (ret < 0) {
             LogErrorf(logger_, "rtmp connect error:%d", ret);
             return -1;
         }
-        LogInfof(logger_, "rtmp client connect...");
         client_phase_ = client_connect_resp_phase;
         recv_buffer_.Reset();
         return RTMP_NEED_READ_MORE;
@@ -197,9 +202,6 @@ int RtmpClientSession::HandleMessage() {
             return RTMP_NEED_READ_MORE;
         } else if (ret == 0) {
             client_phase_ = client_create_stream_phase;
-            if (cb_) {
-                cb_->OnRtmpConnect(0);
-            }
         } else {
             LogErrorf(logger_, "rtmp connect resp unkown return:%d", ret);
             return -1;
@@ -232,9 +234,6 @@ int RtmpClientSession::HandleMessage() {
             } else {
                 client_phase_ = client_create_play_phase;
             }
-            if (cb_) {
-                cb_->OnRtmpCreateStream(0);
-            }
             LogInfof(logger_, "change to rtmp phase:%s", GetClientPhaseDesc(client_phase_));
             recv_buffer_.Reset();
         } else {
@@ -250,10 +249,7 @@ int RtmpClientSession::HandleMessage() {
             return ret;
         }
         recv_buffer_.Reset();
-        client_phase_ = client_media_handle_phase;
-        if (cb_) {
-            cb_->OnRtmpPlayPublish(client_media_handle_phase);
-        }
+        client_phase_ = client_create_playpublish_resp_phase;
         return RTMP_NEED_READ_MORE;
     }
 
@@ -264,14 +260,33 @@ int RtmpClientSession::HandleMessage() {
             return ret;
         }
         recv_buffer_.Reset();
-        client_phase_ = client_media_handle_phase;
-        if (cb_) {
-            cb_->OnRtmpPlayPublish(client_media_handle_phase);
-        }
+        client_phase_ = client_create_playpublish_resp_phase;
         LogInfof(logger_, "client publish send done.");
         return RTMP_NEED_READ_MORE;
     }
 
+    if (client_phase_ == client_create_playpublish_resp_phase) {
+        ret = ReceiveRespMessage();
+        if (ret < 0) {
+            LogErrorf(logger_, "rtmp receive resp message in the play/publish response phrase error:%d", ret);
+            return ret;
+        } else if (ret == RTMP_NEED_READ_MORE) {
+            return RTMP_NEED_READ_MORE;
+        } else if (ret == 0) {
+            if (req_.publish_flag_) {
+                client_phase_ = client_media_handle_phase;
+            } else {
+                client_phase_ = client_media_handle_phase;
+            }
+            LogInfof(logger_, "change to rtmp phase:%s(%d)", GetClientPhaseDesc(client_phase_), client_phase_);
+            recv_buffer_.Reset();
+        } else {
+            LogErrorf(logger_, "rtmp play/publish unkown return:%d", ret);
+            return -1;
+        }
+    }
+
+    LogInfof(logger_, "the client_phase_:%d", (int)client_phase_);
     if (client_phase_ == client_media_handle_phase) {
         LogDebugf(logger_, "rtmp client start media %s", IsPublishDesc());
         ret = ReceiveRespMessage();
@@ -304,13 +319,14 @@ int RtmpClientSession::ReceiveRespMessage() {
             }
             return RTMP_NEED_READ_MORE;
         }
-
+        
         if ((cs_ptr->type_id_ >= RTMP_CONTROL_SET_CHUNK_SIZE) && (cs_ptr->type_id_ <= RTMP_CONTROL_SET_PEER_BANDWIDTH)) {
             ret = ctrl_handler_.HandleRtmpControlMessage(cs_ptr, false);
             if (ret < RTMP_OK) {
                 LogInfof(logger_, "HandleRtmpControlMessage error:%d", ret);
                 return ret;
             }
+            reportCtrlMsg(cs_ptr);
             cs_ptr->Reset();
             if (recv_buffer_.DataLen() > 0) {
                 continue;
@@ -318,6 +334,8 @@ int RtmpClientSession::ReceiveRespMessage() {
             break;
         } else if (cs_ptr->type_id_ == RTMP_COMMAND_MESSAGES_AMF0) {
             std::vector<AMF_ITERM*> amf_vec;
+            RTMP_CLIENT_SESSION_PHASE current_phase = client_phase_;
+
             ret = ctrl_handler_.HandleServerCommandMessage(cs_ptr, amf_vec);
             if (ret < RTMP_OK) {
                 for (auto iter : amf_vec) {
@@ -326,6 +344,15 @@ int RtmpClientSession::ReceiveRespMessage() {
                 }
                 LogInfof(logger_, "HandleServerCommandMessageerror:%d", ret);
                 return ret;
+            }
+            
+            if (current_phase == client_connect_resp_phase) {
+                reportConnectRespAmf(0, amf_vec);
+            } else if (current_phase == client_create_stream_resp_phase) {
+                reportCreateStreamRespAmf(0, amf_vec);
+            } else if (current_phase == client_create_playpublish_resp_phase) {
+                reportPlayPublishRespAmf(0, amf_vec);
+                client_phase_ = client_media_handle_phase;
             }
             for (auto iter : amf_vec) {
                 AMF_ITERM* temp = iter;
@@ -345,8 +372,8 @@ int RtmpClientSession::ReceiveRespMessage() {
 
             //handle video/audio
             //TODO: send media data to client callback....
-            if (cb_) {
-                cb_->OnMessage(RTMP_OK, pkt_ptr);
+            if (data_cb_) {
+                data_cb_->OnMessage(RTMP_OK, pkt_ptr);
             }
 
             cs_ptr->Reset();
@@ -361,44 +388,180 @@ int RtmpClientSession::ReceiveRespMessage() {
     return ret;
 }
 
+void RtmpClientSession::reportCtrlMsg(CHUNK_STREAM_PTR cs_ptr) {
+    if (cs_ptr->type_id_ == RTMP_CONTROL_SET_CHUNK_SIZE) {
+        if (cs_ptr->chunk_data_ptr_->DataLen() < 4) {
+            LogErrorf(logger_, "set chunk size control message size error:%d", cs_ptr->chunk_data_ptr_->DataLen());
+            ctrl_cb_->OnRtmpChunkSize(-1, 0);
+            return;
+        }
+        uint32_t chunk_size = ByteStream::Read4Bytes((uint8_t*)cs_ptr->chunk_data_ptr_->Data());
+        ctrl_cb_->OnRtmpChunkSize(0, chunk_size);
+    } else if (cs_ptr->type_id_ == RTMP_CONTROL_WINDOW_ACK_SIZE) {
+        if (cs_ptr->chunk_data_ptr_->DataLen() < 4) {
+            LogErrorf(logger_, "window ack size control message size error:%d", cs_ptr->chunk_data_ptr_->DataLen());
+            ctrl_cb_->OnRtmpWindowSize(-1, 0);
+            return;
+        }
+        uint32_t remote_window_acksize = ByteStream::Read4Bytes((uint8_t*)cs_ptr->chunk_data_ptr_->Data());
+        ctrl_cb_->OnRtmpWindowSize(0, remote_window_acksize);
+    } else if (cs_ptr->type_id_ == RTMP_CONTROL_SET_PEER_BANDWIDTH) {
+        if (cs_ptr->chunk_data_ptr_->DataLen() < 4) {
+            LogErrorf(logger_, "update peer bandwidth error:%d", cs_ptr->chunk_data_ptr_->DataLen());
+            ctrl_cb_->OnRtmpBandWidth(-1, 0);
+            return;
+        }
+        uint32_t bandwidth = ByteStream::Read4Bytes((uint8_t*)cs_ptr->chunk_data_ptr_->Data());
+        ctrl_cb_->OnRtmpBandWidth(0, bandwidth);
+    } else if (cs_ptr->type_id_ == RTMP_CONTROL_ACK) {
+        ctrl_cb_->OnRtmpCtrlAck();
+    } else {
+        LogErrorf(logger_, "don't handle rtmp control message, typeid:%d", cs_ptr->type_id_);
+    }
+}
+
+void RtmpClientSession::getItemMap(AMF_ITERM* item, std::map<std::string, std::string>& items) {
+    if (item->amf_type_ != AMF_DATA_TYPE_OBJECT) {
+        return;
+    }
+    for (auto obj_item : item->amf_obj_) {
+        std::string key = obj_item.first;
+        std::string value;
+        AMF_ITERM* amf_p = obj_item.second;
+
+        if (amf_p->amf_type_ == AMF_DATA_TYPE_STRING) {
+            value = amf_p->desc_str_;
+        } else if (amf_p->amf_type_ == AMF_DATA_TYPE_NUMBER) {
+            value = std::to_string(amf_p->number_);
+        } else if (amf_p->amf_type_ == AMF_DATA_TYPE_BOOL) {
+            value = amf_p->enable_ ? "enable" : "disable";
+        }
+        if (!key.empty() && !value.empty()) {
+            items.insert(std::make_pair(key, value));
+        } else {
+            LogErrorf(logger_, "amf decode error, key:%s, value:%s",
+                key.c_str(), value.c_str());
+        }
+    }
+}
+
+void RtmpClientSession::reportConnectRespAmf(int ret, const std::vector<AMF_ITERM*>& amf_vec) {
+    std::string result;
+    int64_t transaction_id = 0;
+    std::map<std::string, std::string> items;
+
+    if (ret < 0) {
+        ctrl_cb_->OnRtmpConnectRecv(ret, result, transaction_id, items);
+        return;
+    }
+    for (AMF_ITERM* item : amf_vec) {
+        if (item->amf_type_ == AMF_DATA_TYPE_STRING) {
+            result = item->desc_str_;
+        }
+        if (item->amf_type_ == AMF_DATA_TYPE_NUMBER) {
+            transaction_id = (int64_t)item->number_;
+        }
+        if (item->amf_type_ == AMF_DATA_TYPE_OBJECT) {
+            getItemMap(item, items);
+        }
+    }
+    ctrl_cb_->OnRtmpConnectRecv(ret, result, transaction_id, items);
+}
+
+void RtmpClientSession::reportCreateStreamRespAmf(int ret, const std::vector<AMF_ITERM*>& amf_vec) {
+    std::string result;
+    int64_t transaction_id = 0;
+    int64_t stream_id = 0;
+    std::map<std::string, std::string> items;
+
+    if (ret < 0) {
+        ctrl_cb_->OnRtmpCreateStreamRecv(ret, result, transaction_id, stream_id, items);
+        return;
+    }
+    int index = 0;
+    for (AMF_ITERM* item : amf_vec) {
+        if (item->amf_type_ == AMF_DATA_TYPE_STRING) {
+            result = item->desc_str_;
+        }
+        if (item->amf_type_ == AMF_DATA_TYPE_NUMBER) {
+            if (index == 0) {
+                transaction_id = (int64_t)item->number_;
+            } else if (index == 1) {
+                stream_id = (int64_t)item->number_;
+            }
+        }
+        if (item->amf_type_ == AMF_DATA_TYPE_OBJECT) {
+            getItemMap(item, items);
+        }
+    }
+    ctrl_cb_->OnRtmpCreateStreamRecv(ret, result,
+        transaction_id, stream_id, items);
+}
+
+void RtmpClientSession::reportPlayPublishRespAmf(int ret, const std::vector<AMF_ITERM*>& amf_vec) {
+    std::string status;
+    int64_t transaction_id = 0;
+    std::map<std::string, std::string> items;
+
+    if (ret < 0) {
+        ctrl_cb_->OnRtmpPlayPublishRecv(ret, status, transaction_id, items);
+        return;
+    }
+    for (AMF_ITERM* item : amf_vec) {
+        if (item->amf_type_ == AMF_DATA_TYPE_STRING) {
+            status = item->desc_str_;
+        }
+        if (item->amf_type_ == AMF_DATA_TYPE_NUMBER) {
+            transaction_id = (int64_t)item->number_;
+        }
+        if (item->amf_type_ == AMF_DATA_TYPE_OBJECT) {
+            getItemMap(item, items);
+        }
+    }
+    ctrl_cb_->OnRtmpPlayPublishRecv(ret, status, transaction_id, items);
+}
+
 int RtmpClientSession::RtmpConnect() {
     DataBuffer amf_buffer;
+    std::map<std::string, std::string> items;
 
     AMF_Encoder::Encode(std::string("connect"), amf_buffer);
     double transid = (double)req_.transaction_id_;
     AMF_Encoder::Encode(transid, amf_buffer);
+    items.insert(std::make_pair("connect", std::to_string(transid)));
 
     std::map<std::string, AMF_ITERM*> event_amf_obj;
     AMF_ITERM* app_item = new AMF_ITERM();
     app_item->SetAmfType(AMF_DATA_TYPE_STRING);
     app_item->desc_str_ = req_.app_;
     event_amf_obj.insert(std::make_pair("app", app_item));
-    LogInfof(logger_, "rtmp connect app:%s", req_.app_.c_str());
+    items.insert(std::make_pair("app", req_.app_));
 
     AMF_ITERM* type_item = new AMF_ITERM();
     type_item->SetAmfType(AMF_DATA_TYPE_STRING);
     type_item->desc_str_ = "nonprivate";
     event_amf_obj.insert(std::make_pair("type", type_item));
+    items.insert(std::make_pair("type", type_item->desc_str_));
 
     AMF_ITERM* ver_item = new AMF_ITERM();
     ver_item->SetAmfType(AMF_DATA_TYPE_STRING);
     ver_item->desc_str_ = "FMS.3.1";
     event_amf_obj.insert(std::make_pair("flashVer", ver_item));
+    items.insert(std::make_pair("flashVer", ver_item->desc_str_));
 
     AMF_ITERM* tcurl_item = new AMF_ITERM();
     tcurl_item->SetAmfType(AMF_DATA_TYPE_STRING);
     tcurl_item->desc_str_ = req_.tcurl_;
     event_amf_obj.insert(std::make_pair("tcUrl", tcurl_item));
-    LogInfof(logger_, "rtmp connect tcurl:%s", req_.tcurl_.c_str());
+    items.insert(std::make_pair("tcUrl", req_.tcurl_));
 
+    ctrl_cb_->OnRtmpConnectSend(0, items);
     AMF_Encoder::Encode(event_amf_obj, amf_buffer);
 
     delete app_item;
     delete type_item;
     delete ver_item;
     delete tcurl_item;
-
-    LogInfof(logger_, "rtmp connect start chunk_size:%u", chunk_size_);
 
     uint32_t stream_id = 0;
     int ret = WriteDataByChunkStream(this, 3, 0, RTMP_COMMAND_MESSAGES_AMF0,
@@ -418,6 +581,8 @@ int RtmpClientSession::RtmpCreatestream() {
     double transid = (double)req_.transaction_id_;
     AMF_Encoder::Encode(transid, amf_buffer);
     AMF_Encoder::EncodeNull(amf_buffer);
+
+    ctrl_cb_->OnRtmpCreateStreamSend(0, (int64_t)transid);
 
     uint32_t stream_id = 0;
     int ret = WriteDataByChunkStream(this, 3, 0, RTMP_COMMAND_MESSAGES_AMF0,
@@ -439,6 +604,8 @@ int RtmpClientSession::RtmpPlay() {
     AMF_Encoder::EncodeNull(amf_buffer);
     AMF_Encoder::Encode(req_.stream_name_, amf_buffer);
 
+    ctrl_cb_->OnRtmpPlayPublishSend("play", int64_t(transid), req_.stream_name_);
+
     uint32_t stream_id = 0;
     int ret = WriteDataByChunkStream(this, 3, 0, RTMP_COMMAND_MESSAGES_AMF0,
                                     stream_id, GetChunkSize(),
@@ -459,6 +626,8 @@ int RtmpClientSession::RtmpPublish() {
     AMF_Encoder::EncodeNull(amf_buffer);
     AMF_Encoder::Encode(req_.stream_name_, amf_buffer);
     AMF_Encoder::Encode(std::string("live"), amf_buffer);
+
+    ctrl_cb_->OnRtmpPlayPublishSend("publish", int64_t(transid), req_.stream_name_);
 
     uint32_t stream_id = 0;
     int ret = WriteDataByChunkStream(this, 3, 0, RTMP_COMMAND_MESSAGES_AMF0,

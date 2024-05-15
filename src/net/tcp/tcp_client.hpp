@@ -115,12 +115,13 @@ public:
         if(getaddrinfo(host.c_str(), port_sz, (const addrinfo*)&hints, &ai)) {
             throw CppStreamException("get address info error");
         }
-        freeaddrinfo(ai);
 
         //if ((r = uv_ip4_addr(host.c_str(), dst_port, &dst_addr_)) != 0) {
         //    throw CppStreamException("connect address error");
         //}
         connect_->data = this;
+        LogInfof(logger_, "start connect sizeof(dst_addr_):%lu, ai->ai_addrlen:%lu",
+            sizeof(dst_addr_), ai->ai_addrlen);
         assert(sizeof(dst_addr_) == ai->ai_addrlen);
 
         std::string dst_ip = GetIpStr(ai->ai_addr, dst_port);
@@ -130,8 +131,10 @@ public:
         if ((r = uv_tcp_connect(connect_, client_,
                             (const struct sockaddr*)&dst_addr_,
                             OnUVClientConnected)) != 0) {
+            freeaddrinfo(ai);
             throw CppStreamException("connect address error");
         }
+        freeaddrinfo(ai);
         return;
     }
 

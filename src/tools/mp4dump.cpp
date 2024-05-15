@@ -83,20 +83,19 @@ public:
         mp4_demux_streamer_->SetLogger(logger_);
         mp4_demux_streamer_->SetReporter(this);
         mp4_demux_streamer_->AddSinker(this);
+        mp4_demux_streamer_->AddOption("box_detail", "true");
         return 0;
     }
 
-    int InputMp4Data(uint8_t* data, size_t data_len) {
+    void Start() {
         if (!mp4_demux_streamer_) {
             LogErrorf(logger_, "mp4 demux streamer is not ready");
-            return -1;
+            return;
         }
         Media_Packet_Ptr pkt_ptr = std::make_shared<Media_Packet>();
-        pkt_ptr->buffer_ptr_->AppendData((char*)data, data_len);
         pkt_ptr->io_reader_ = file_reader_;
 
         mp4_demux_streamer_->SourceData(pkt_ptr);
-        return 0;
     }
 
 public:
@@ -149,6 +148,26 @@ public:
                 LogInfof(logger_, "video sequence header:%s", pkt_ptr->Dump(true).c_str());
             } else {
                 LogInfof(logger_, "video data:%s", pkt_ptr->Dump(false).c_str());
+
+                if (pkt_ptr->codec_type_ == MEDIA_CODEC_H265) {
+                    uint8_t* p = (uint8_t*)pkt_ptr->buffer_ptr_->Data();
+                    int len = pkt_ptr->buffer_ptr_->DataLen();
+                    std::vector<std::shared_ptr<DataBuffer>> nalus;
+
+                    bool ret = AnnexB2Nalus(p, len, nalus);
+                    if (ret) {
+                        for (std::shared_ptr<DataBuffer> nalu : nalus) {
+                            p = (uint8_t*)nalu->Data();
+                            int pos = GetNaluTypePos(p);
+
+                            if (pos > 0) {
+                                Hevc_Header header;
+                                GetHevcHeader(p + pos, header);
+                                LogInfof(logger_, "hevc header:%s", HevcHeaderDump(header).c_str());
+                            }
+                        }
+                    }
+                }
             }
         } else {
             assert(0);
@@ -221,20 +240,7 @@ int main(int argc, char** argv) {
         LogErrorf(s_logger, "call make streamer error");
         return -1;
     }
-    FILE* file_p = fopen(input_mp4_name, "r");
-    if (!file_p) {
-        LogErrorf(s_logger, "open mp4 file error:%s", input_mp4_name);
-        return -1;
-    }
-    uint8_t read_data[2048];
-    size_t read_n = 0;
-    do {
-        read_n = fread(read_data, 1, sizeof(read_data), file_p);
-        if (read_n > 0) {
-            streamer_mgr_ptr->InputMp4Data(read_data, read_n);
-        }
-    } while (read_n > 0);
-    fclose(file_p);
+    streamer_mgr_ptr->Start();
 
     LogInfof(s_logger, "mp4 dump done");
 

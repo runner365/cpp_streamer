@@ -1,5 +1,6 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
+#include "timeex.hpp"
 
 #include <string>
 #include <stdint.h>
@@ -7,10 +8,10 @@
 #include <cstdio> // std::snprintf()
 #include <stdexcept>
 #include <assert.h>
-#include "timeex.hpp"
 #include <stdio.h>
 #include <sstream>
 #include <iostream>
+#include <vector>
 
 namespace cpp_streamer
 {
@@ -86,6 +87,18 @@ private:
     bool console_enable_ = false;
 };
 
+inline std::string Data2HexString(uint8_t* data, size_t len) {
+    std::vector<char> c0c1_desc(len * 4);
+    char* desc = (char*)(&c0c1_desc[0]);
+    int desc_len = 0;
+
+    for (size_t index = 0; index < len; index++) {
+        desc_len += sprintf(desc + desc_len, "%02x ", data[index]);
+    }
+
+    return std::string(desc);
+}
+
 inline void LogError(Logger* logger, const char* data) {
     if (logger == nullptr || logger->GetLevel() > LOGGER_INFO_LEVEL) {
         return;
@@ -125,8 +138,7 @@ inline void LogWarnf(Logger* logger, const char* fmt, ...) {
     va_list ap;
  
     va_start(ap, fmt);
-    int ret_len = vsnprintf(buffer, bsize, fmt, ap);
-    buffer[ret_len] = 0;
+    vsnprintf(buffer, bsize, fmt, ap);
     va_end(ap);
 
     logger->Logf("W", buffer);
@@ -186,7 +198,7 @@ inline void LogInfoData(Logger* logger, uint8_t* data, size_t len, const char* d
     }
     char print_data[16*1024];
     size_t print_len = 0;
-    const int MAX_LINES = 2;
+    const int MAX_LINES = 100;
     int line = 0;
     int index = 0;
     print_len += snprintf(print_data, sizeof(print_data), "%s:", dscr);

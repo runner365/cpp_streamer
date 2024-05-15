@@ -45,6 +45,19 @@ inline void GetIpv4Sockaddr(const std::string& ip, uint16_t port, struct sockadd
     return;
 }
 
+// x.x.x.x:xxx to x.x.x.x xxx
+inline bool GetHostAndPort(const std::string host_address, std::string& host, uint16_t& port) {
+    size_t pos = host_address.find(":");
+    if (pos == host_address.npos) {
+        return false;
+    }
+    host = host_address.substr(0, pos);
+    std::string port_str = host_address.substr(pos + 1);
+
+    port = (uint16_t)std::atoi(port_str.c_str());
+
+    return true;
+}
 
 }
 #endif

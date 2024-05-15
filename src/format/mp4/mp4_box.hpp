@@ -3,6 +3,7 @@
 #include "byte_stream.hpp"
 #include "stringex.hpp"
 #include "av.hpp"
+#include "h264_h265_header.hpp"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -110,6 +111,8 @@ public:
     uint32_t avg_bit_rate_;
 
     std::vector<uint8_t> sequence_data_;
+    HEVC_NALUnit lhvC_sps_;
+    HEVC_NALUnit lhvC_pps_;
     std::vector<SampleEntry> sample_entries_;//stts: sample, duration for dts
     std::vector<SampleOffset> sample_offset_vec_;//ctts: sample cts list(cts = pts - dts) to get pts
     std::vector<uint32_t> iframe_sample_vec_;//stss: sample I frame position
@@ -812,7 +815,7 @@ public:
 static MEDIA_CODEC_TYPE GetCodecTypeByBoxType(const std::string& box_type) {
     if (box_type == "avcC") {
         return MEDIA_CODEC_H264;
-    } else if (box_type == "hvcC") {
+    } else if (box_type == "hvcC" || box_type == "hvc1") {
         return MEDIA_CODEC_H265;
     } else if (box_type == "vvcC") {
         return MEDIA_CODEC_H266;
@@ -839,7 +842,7 @@ public:
         uint8_t* p = Mp4BoxBase::Parse(start);
         size_t index = mov.traks_info_.size() - 1;
 
-        size_t data_len = box_size_ - 8;
+        size_t data_len = box_size_ - (p - start);
 
         mov.traks_info_[index].codec_type_ = GetCodecTypeByBoxType(type_);
         data_.resize(data_len);
@@ -1291,30 +1294,19 @@ public:
     std::vector<Mp4BoxBase*> unknown_boxes_;
 };
 
-class Avc1Box : public Mp4BoxBase
+class StsdAvcInfo
 {
 public:
-    Avc1Box() {
-        type_ = "avc1";
-        memset(compressorname_, 0, sizeof(compressorname_));
+    StsdAvcInfo()
+    {
     }
-    ~Avc1Box() {
-        if (video_hdr_box_) {
-            delete video_hdr_box_;
-            video_hdr_box_ = nullptr;
-        }
-        if (pasp_box_) {
-            delete pasp_box_;
-            pasp_box_ = nullptr;
-        }
-        for (Mp4BoxBase* box : unknown_boxes_) {
-            delete box;
-        }
-        unknown_boxes_.clear();
+    ~StsdAvcInfo()
+    {
     }
 
-    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
-        uint8_t* p = Mp4BoxBase::Parse(start);
+public:
+    uint8_t* Parse(uint8_t* data, MovInfo& mov) {
+        uint8_t* p = data;
         size_t index = mov.traks_info_.size() - 1;
 
         reserved1_ = ByteStream::Read4Bytes(p);
@@ -1360,6 +1352,329 @@ public:
         reserved4_ = ByteStream::Read2Bytes(p);
         p += 2;
 
+        return p;
+    }
+
+    std::string Dump(std::stringstream& ss) {
+        ss << "\"reserved1\":" << reserved1_ << ",";
+        ss << "\"reserved2\":" << reserved2_ << ",";
+        ss << "\"data_reference_index\":" << data_reference_index_ << ",";
+        ss << "\"codec_stream_version\":" << codec_stream_version_ << ",";
+        ss << "\"codec_stream_reversion\":" << codec_stream_reversion_ << ",";
+        ss << "\"reserved3\":[";
+        for (size_t i = 0; i < sizeof(reserved3_)/sizeof(uint32_t); i++) {
+            ss << reserved3_[i];
+            if (i != (sizeof(reserved3_)/sizeof(uint32_t) - 1)) {
+                ss << ",";
+            }
+        }
+        ss << "],";
+        ss << "\"width\":" << width_ << ",";
+        ss << "\"height\":" << height_ << ",";
+        ss << "\"horizontal_resolution\":" << horizontal_resolution_ << ",";
+        ss << "\"vertical_resolution_\":" << vertical_resolution_ << ",";
+        ss << "\"data_size\":" << data_size_ << ",";
+        ss << "\"frame_count\":" << frame_count_ << ",";
+        ss << "\"compressorname\":[";
+        for (size_t i = 0; i < sizeof(compressorname_); i++) {
+            ss << (int)compressorname_[i];
+            if (i != sizeof(compressorname_) - 1) {
+                ss << ",";
+            }
+        }
+        ss << "],";
+        ss << "\"alpha\":" << alpha_ << ",";
+        ss << "\"reserved4\":" << reserved4_ << ",";
+        return ss.str();
+    }
+public:
+    uint32_t reserved1_ = 0;
+    uint16_t reserved2_ = 0;
+    uint16_t data_reference_index_ = 0;
+    uint16_t codec_stream_version_ = 0;//Reserved
+    uint16_t codec_stream_reversion_ = 0;//Reserved
+    uint32_t reserved3_[3];
+    uint16_t width_ = 0;
+    uint16_t height_ = 0;
+    uint32_t horizontal_resolution_ = 0;
+    uint32_t vertical_resolution_ = 0;
+    uint32_t data_size_ = 0;//Reserved
+    uint16_t frame_count_ = 0;//frame cout == 1
+    char compressorname_[32];//0 for default
+    uint16_t alpha_ = 0x18;
+    uint16_t reserved4_ = 0xffff;
+};
+
+class LhvCBox : public Mp4BoxBase
+{
+public:
+    LhvCBox() {
+        type_ = "lhvC";
+    }
+    ~LhvCBox() {
+    }
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+        size_t extra_data_len = box_size_- (p - start);
+
+        hex_data_.resize(extra_data_len);
+        uint8_t* hex_data_p = (uint8_t*)(&hex_data_[0]);
+        memcpy(hex_data_p, p, extra_data_len);
+
+        p += 6;
+        while (p < start + box_size_) {
+            HEVC_NALUnit hevc_unit;
+
+            if ((p + 5) > start + box_size_) {
+                CSM_THROW_ERROR("lhvC box decode pps/sps exception");
+            }
+            hevc_unit.array_completeness = (*p >> 7) & 0x01;
+            hevc_unit.nal_unit_type = (*p) & 0x3f;
+            p++;
+            hevc_unit.num_nalus = ByteStream::Read2Bytes(p);
+            p += 2;
+
+            for (int i = 0; i < hevc_unit.num_nalus; i++) {
+                HEVC_NALU_DATA data_item;
+                uint16_t nalUnitLength = ByteStream::Read2Bytes(p);
+                p += 2;
+
+                if ((p + nalUnitLength) > start + box_size_) {
+                    CSM_THROW_ERROR("lhvC box decode pps/sps exception");
+                }
+                //copy vps/pps/sps data
+                data_item.nalu_data.resize(nalUnitLength);
+                memcpy((uint8_t*)(&data_item.nalu_data[0]), p, nalUnitLength);
+                p += nalUnitLength;
+
+                hevc_unit.nal_data_vec.push_back(data_item);
+            }
+            if (hevc_unit.nal_unit_type == NAL_UNIT_SPS) {
+                mov.traks_info_[index].lhvC_sps_ = hevc_unit;
+            } else if (hevc_unit.nal_unit_type == NAL_UNIT_PPS) {
+                mov.traks_info_[index].lhvC_pps_ = hevc_unit;
+            } else {
+                CSM_THROW_ERROR("unsupported nalu type(%d) in lhvC", hevc_unit.nal_unit_type);
+            }
+            lhvC_spspps_.push_back(hevc_unit);
+        }
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        uint8_t* data = (uint8_t*)&(hex_data_[0]);
+        std::string hex_str = DataToString(data, hex_data_.size(), false);
+
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"seq_headers\":" << "[";
+
+        int item_index = 0;
+        for (const HEVC_NALUnit& item : lhvC_spspps_) {
+            ss << "{";
+            ss << "\"" << (int)item.nal_unit_type << "\":";
+            ss << "{";
+            ss << "\"array_completeness\":";
+            ss << (int)item.array_completeness << ",";
+            ss << "\"num_nalus\":";
+            ss << (int)item.num_nalus << ",";
+            ss << "\"nalus\":" << "[";
+            int i = 0;
+            for (const HEVC_NALU_DATA& nalu_item : item.nal_data_vec) {
+                uint8_t* p = (uint8_t*)&(nalu_item.nalu_data[0]);
+                std::string nalu_hex = DataToString(p, nalu_item.nalu_data.size(), false);
+
+                ss << "\"" << nalu_hex << "\"";
+                if (++i < item.nal_data_vec.size()) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+            ss << "}";
+            ss << "}";
+
+            if (++item_index < lhvC_spspps_.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+        ss << ",";
+        ss << "\"hex_data\":\"" << hex_str << "\"";
+        ss << "}";
+        return ss.str();
+    }
+public:
+    std::vector<HEVC_NALUnit> lhvC_spspps_;
+    std::vector<uint8_t> hex_data_;
+};
+
+class HvcCBox : public Mp4BoxBase
+{
+public:
+    HvcCBox() {
+        type_ = "hvcC";
+    }
+    ~HvcCBox() {
+    }
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+        size_t index = mov.traks_info_.size() - 1;
+        size_t extra_data_len = box_size_- (p - start);
+
+        if (extra_data_len > 5 * 1024) {
+            CSM_THROW_ERROR("try get hevc decode info exception, extra_data_len(%lu) is too large", extra_data_len);
+        }
+        int ret = GetHevcDecInfoFromExtradata(&hevc_dec_info_, p, extra_data_len);
+        if (ret < 0) {
+            CSM_THROW_ERROR("try get hevc decode info exception");
+        }
+
+        mov.traks_info_[index].codec_type_ = GetCodecTypeByBoxType(type_);
+
+        hex_data_.resize(extra_data_len);
+        uint8_t* hex_data_p = (uint8_t*)(&hex_data_[0]);
+        memcpy(hex_data_p, p, extra_data_len);
+
+        mov.traks_info_[index].sequence_data_.resize(extra_data_len);
+        uint8_t* seq_data  = (uint8_t*)&(mov.traks_info_[index].sequence_data_[0]);
+        memcpy(seq_data, p, extra_data_len);
+
+        return start + box_size_;
+    }
+    std::string Dump() {
+        std::stringstream ss;
+        int hex_size = hex_data_.size() * 4;
+        char* hex_sz = new char[hex_size];
+
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << "\"decinfo\":" << HevcDecInfoDemp(&hevc_dec_info_);
+        ss << ",";
+        int len = 0;
+        for (uint8_t item : hex_data_) {
+            len += snprintf(hex_sz + len, hex_size - len, "0x%02x ", item);
+        }
+        ss << "\"hex_data\":\"" << std::string(hex_sz) << "\"";
+        ss << "}";
+
+        delete[] hex_sz;
+
+        return ss.str();
+    }
+public:
+    HEVC_DEC_CONF_RECORD hevc_dec_info_;
+    std::vector<uint8_t> hex_data_;
+};
+
+class Hvc1Box : public Mp4BoxBase, public StsdAvcInfo
+{
+public:
+    Hvc1Box() {
+        type_ = "hvc1";
+    }
+    ~Hvc1Box() {
+        if (hvcC_) {
+            delete hvcC_;
+            hvcC_ = nullptr;
+        }
+        if (lhvC_) {
+            delete lhvC_;
+            lhvC_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+
+        p = StsdAvcInfo::Parse(p, mov);
+        //next box: avcC(h264), hvcC(h265), av1C(av1), vvcC(h266), vpcC(vp8, vp9)
+
+        while (p < (start + box_size_)) {
+            std::string box_type;
+            int offset;
+
+            (void)GetBoxHeaderInfo(p, box_type, offset);
+            if (box_type == "hvcC") {
+                hvcC_ = new HvcCBox();
+                p = hvcC_->Parse(p, mov);
+                std::cout << hvcC_->Dump() << "\r\n\r\n";
+            } else if (box_type == "lhvC") {
+                lhvC_ = new LhvCBox();
+                p = lhvC_->Parse(p, mov);
+                std::cout << lhvC_->Dump() << "\r\n\r\n";
+            } else {
+                Mp4BoxBase* box = new Mp4BoxBase();
+                box->Parse(p);
+                p += box->box_size_;
+                unknown_boxes_.push_back(box);
+            }
+        }
+        assert(p == start + box_size_);
+        return start + box_size_;
+    }
+
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "{";
+        ss << "\"type\":\"" << type_ << "\",";
+        ss << "\"size\":" << box_size_ << ",";
+        ss << StsdAvcInfo::Dump(ss);
+        if (hvcC_) {
+            ss << ",";
+            ss << "\"hvcC\":" << hvcC_->Dump();
+        }
+        if (lhvC_) {
+            ss << ",";
+            ss << "\"lhvC\":" << lhvC_->Dump();
+        }
+        for (Mp4BoxBase* unknown_box : unknown_boxes_) {
+            ss << ",";
+            ss << "\"" << unknown_box->type_ << "\":" << unknown_box->Dump();
+        }
+        ss << "}";
+        return ss.str();
+    }
+
+public:
+    HvcCBox* hvcC_ = nullptr;
+    LhvCBox* lhvC_ = nullptr;
+    std::vector<Mp4BoxBase*> unknown_boxes_;
+};
+
+class Avc1Box : public Mp4BoxBase, public StsdAvcInfo
+{
+public:
+    Avc1Box() {
+        type_ = "avc1";
+        memset(compressorname_, 0, sizeof(compressorname_));
+    }
+    ~Avc1Box() {
+        if (video_hdr_box_) {
+            delete video_hdr_box_;
+            video_hdr_box_ = nullptr;
+        }
+        if (pasp_box_) {
+            delete pasp_box_;
+            pasp_box_ = nullptr;
+        }
+        for (Mp4BoxBase* box : unknown_boxes_) {
+            delete box;
+        }
+        unknown_boxes_.clear();
+    }
+
+    uint8_t* Parse(uint8_t* start, MovInfo& mov) {
+        uint8_t* p = Mp4BoxBase::Parse(start);
+
+        p = StsdAvcInfo::Parse(p, mov);
         //next box: avcC(h264), hvcC(h265), av1C(av1), vvcC(h266), vpcC(vp8, vp9)
         video_hdr_box_ = new VideoSequenceBox();
         p = video_hdr_box_->Parse(p, mov);
@@ -1395,35 +1710,7 @@ public:
         ss << "{";
         ss << "\"type\":\"" << type_ << "\",";
         ss << "\"size\":" << box_size_ << ",";
-        ss << "\"reserved1\":" << reserved1_ << ",";
-        ss << "\"reserved2\":" << reserved2_ << ",";
-        ss << "\"data_reference_index\":" << data_reference_index_ << ",";
-        ss << "\"codec_stream_version\":" << codec_stream_version_ << ",";
-        ss << "\"codec_stream_reversion\":" << codec_stream_reversion_ << ",";
-        ss << "\"reserved3\":[";
-        for (size_t i = 0; i < sizeof(reserved3_)/sizeof(uint32_t); i++) {
-            ss << reserved3_[i];
-            if (i != (sizeof(reserved3_)/sizeof(uint32_t) - 1)) {
-                ss << ",";
-            }
-        }
-        ss << "],";
-        ss << "\"width\":" << width_ << ",";
-        ss << "\"height\":" << height_ << ",";
-        ss << "\"horizontal_resolution\":" << horizontal_resolution_ << ",";
-        ss << "\"vertical_resolution_\":" << vertical_resolution_ << ",";
-        ss << "\"data_size\":" << data_size_ << ",";
-        ss << "\"frame_count\":" << frame_count_ << ",";
-        ss << "\"compressorname\":[";
-        for (size_t i = 0; i < sizeof(compressorname_); i++) {
-            ss << (int)compressorname_[i];
-            if (i != sizeof(compressorname_) - 1) {
-                ss << ",";
-            }
-        }
-        ss << "],";
-        ss << "\"alpha\":" << alpha_ << ",";
-        ss << "\"reserved4\":" << reserved4_ << ",";
+        ss << StsdAvcInfo::Dump(ss);
         ss << "\"video_hdr\":" << video_hdr_box_->Dump();
         if (pasp_box_) {
             ss << ",";
@@ -1446,22 +1733,6 @@ public:
     }
 
 public:
-    uint32_t reserved1_ = 0;
-    uint16_t reserved2_ = 0;
-    uint16_t data_reference_index_ = 0;
-    uint16_t codec_stream_version_ = 0;//Reserved
-    uint16_t codec_stream_reversion_ = 0;//Reserved
-    uint32_t reserved3_[3];
-    uint16_t width_ = 0;
-    uint16_t height_ = 0;
-    uint32_t horizontal_resolution_ = 0;
-    uint32_t vertical_resolution_ = 0;
-    uint32_t data_size_ = 0;//Reserved
-    uint16_t frame_count_ = 0;//frame cout == 1
-    char compressorname_[32];//0 for default
-    uint16_t alpha_ = 0x18;
-    uint16_t reserved4_ = 0xffff;
-
     VideoSequenceBox* video_hdr_box_ = nullptr;
     PaspBox* pasp_box_ = nullptr;
     std::vector<Mp4BoxBase*> unknown_boxes_;
@@ -1478,6 +1749,10 @@ public:
         if (avc1_box_) {
             delete avc1_box_;
             avc1_box_ = nullptr;
+        }
+        if (hvc1_box_) {
+            delete hvc1_box_;
+            hvc1_box_ = nullptr;
         }
         if (mp4a_box_) {
             delete mp4a_box_;
@@ -1507,11 +1782,15 @@ public:
             media_box_size = GetBoxHeaderInfo(p, media_box_type, offset);
             assert(media_box_size < box_size_);
 
+            std::cout << "stsd subtype:" << media_box_type << "\r\n";
             box_type_vec_.push_back(media_box_type);
             if (mov.traks_info_[index].handler_type_ == "vide") {
                 if (media_box_type == "avc1") {
                     avc1_box_ = new Avc1Box();
                     p = avc1_box_->Parse(p, mov);
+                } else if (media_box_type == "hvc1") {
+                    hvc1_box_ = new Hvc1Box();
+                    p = hvc1_box_->Parse(p, mov);
                 } else {
                     Mp4BoxBase* box = new Mp4BoxBase();
                     box->Parse(p);
@@ -1558,6 +1837,10 @@ public:
                 ss << "\"avc1\":" << avc1_box_->Dump();
                 continue;
             };
+            if (box_type_vec_[i] == "hvc1" && hvc1_box_ != nullptr) {
+                ss << "\"hvc1\":" << hvc1_box_->Dump();
+                continue;
+            };
             if (box_type_vec_[i] == "mp4a" && mp4a_box_ != nullptr) {
                 ss << "\"mp4a\":" << mp4a_box_->Dump();
                 continue;
@@ -1586,6 +1869,7 @@ public:
     uint32_t entry_count_  = 0;
     std::vector<std::string> box_type_vec_;
     Avc1Box* avc1_box_ = nullptr;
+    Hvc1Box* hvc1_box_ = nullptr;
     Mp4aBox* mp4a_box_ = nullptr;
 
     std::vector<Mp4BoxBase*> unknown_boxes_;

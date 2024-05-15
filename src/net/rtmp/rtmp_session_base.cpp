@@ -12,14 +12,18 @@ const char* server_phase_desc_list[] = {"handshake c2 phase",
                                         "create publish/play phase",
                                         "media handle phase"};
 
-const char* client_phase_desc_list[] = {"c0c1 phase",
-                                        "connect phase",
-                                        "connect response phase",
-                                        "create stream phase",
-                                        "create stream response phase",
-                                        "create play phase",
-                                        "create publish phase",
-                                        "media handle phase"};
+const char* client_phase_desc_list[] = {
+    "c0c1 phase", // 0
+    "s0s1s2 phase", // 1
+    "connect phase", // 2
+    "connect response phase",// 3
+    "create stream phase",// 4
+    "create stream response phase", // 5
+    "create play phase", // 6
+    "create publish phase", // 7
+    "create play publish response phase" // 8
+    "media handle phase" // 9
+    };
 
 const char* GetServerPhaseDesc(RTMP_SERVER_SESSION_PHASE phase) {
     return server_phase_desc_list[phase];

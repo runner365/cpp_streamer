@@ -87,26 +87,84 @@ int GetAscTypeByAdtsType(int adts_type) {
 }
 //xxxx xyyy yzzz z000
 //aac type==5(or 29): xxx xyyy yzzz zyyy yzzz z000
+/*
+    xxxxx: audioObjectType;
+    yyyy: samplingFrequencyIndex;
+    if (samplingFrequencyIndex == 0xf)
+        samplingFrequency: 24bits
+    zzzz: channelConfiguration;
+*/
+
 bool GetAudioInfoByAsc(uint8_t* data, size_t data_size,
                        uint8_t& audio_type, int& sample_rate,
                        uint8_t& channel) {
     uint8_t sample_rate_index = 0;
     uint8_t* p = data;
+    int left_len = (int)data_size;
+    uint16_t field = 0;
+    uint8_t extensionAudioObjectType = 0;
+    
+    assert(data_size >= 2);
 
-    audio_type = (*p >> 3) & 0x1F;
-    if (audio_type == 31) {
-        return false;//not supported in the version
-    }
-
-    sample_rate_index = (*p & 0x07) << 1;
+    field = ByteStream::Read2Bytes(p);
     p++;
-    sample_rate_index |= (*p & 0x80) >> 7;
-    if (sample_rate_index > sizeof(mpeg4audio_sample_rates)) {
-        return false;//not supported in the version
-    }
+    left_len -= 2;
 
-    sample_rate = mpeg4audio_sample_rates[sample_rate_index];
-    channel = (*p >> 3) & 0x0F;
+    audio_type = (field & 0xf900) >> 11;
+    if (audio_type == 31) {
+        // aaaa abbb bbbc cccd
+        audio_type = (field & 0x07e0) >> 5;//aaaa abbb bbb
+        sample_rate_index = (field & 0x1e) >> 1;//cccc
+
+        if (sample_rate_index == 0x0f) {
+            uint8_t last_bit = field & 0x01;
+            // cccc = 0x0f
+            // aaaa abbb bbbc cccd dddd dddd dddd dddd dddd ddde eeef ffff
+            assert(left_len > 3);
+            field = ByteStream::Read3Bytes(p);
+            p += 3;
+            left_len -= 3;
+
+            //d dddd dddd dddd dddd ddde
+            sample_rate = ((uint32_t)last_bit) >> 24;
+            sample_rate |= field >> 1;
+
+            last_bit = field & 0x01;
+            //eeee
+            channel = (last_bit << 3);
+            channel |= (*p >> 5) & 0x07;
+        } else {
+            // aaaa abbb bbbc cccd ddd
+            uint8_t last_bit = field & 0x01;
+            channel = last_bit << 3;
+            channel |= ((*p) >> 5) & 0x07;
+
+            sample_rate = mpeg4audio_sample_rates[sample_rate_index];
+        }
+    } else {
+        // aaaa abbb bxxx xxxx
+        if (audio_type != 5 && audio_type != 29) {
+            extensionAudioObjectType = 0;
+        }
+        sample_rate_index = ((field & 0x0790) >> 7) & 0x0f;// bbbb
+
+        if (sample_rate_index == 0x0f) {
+            // aaaa abbb bccc cccc cccc cccc cccc cccx
+            uint32_t last_bits = field & 0x7f;
+            field = ByteStream::Read2Bytes(p);
+            p += 2;
+            left_len -= 2;
+
+            sample_rate = (last_bits << 17) & 0xfe0000;
+            sample_rate |= (field >> 1) & 0x7f;
+        } else {
+            // aaaa abbb bccc cxxx
+            channel = (field >> 3) & 0x0f;
+
+            sample_rate = mpeg4audio_sample_rates[sample_rate_index];
+        }
+    }
+    (void)extensionAudioObjectType;
     
     return true;
 }

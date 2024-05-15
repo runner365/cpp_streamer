@@ -59,11 +59,15 @@ void RtmpPublish::HandleVideoData(Media_Packet_Ptr pkt_ptr) {
     int data_len = pkt_ptr->buffer_ptr_->DataLen();
 
     if (data_len < 5) {
-        LogErrorf(logger_, "flv mux input data len:%d error", data_len);
+        LogErrorf(logger_, "rtmp handle video data len:%d error", data_len);
         ReportEvent("error", "video data length error");
         return;
     }
    
+    if (pkt_ptr->is_seq_hdr_ && pkt_ptr->fmt_type_ == MEDIA_FORMAT_FLV) {
+        SendVideo(pkt_ptr);
+        return;
+    }
     std::vector<std::shared_ptr<DataBuffer>> nalus;
     bool ret = AnnexB2Nalus(data, data_len, nalus);
     if (!ret) {
@@ -91,6 +95,9 @@ void RtmpPublish::HandleVideoData(Media_Packet_Ptr pkt_ptr) {
             memcpy(pps_, p + nalu_type_pos, len - nalu_type_pos);
             pps_len_ = len - nalu_type_pos;
             LogInfoData(logger_, pps_, pps_len_, "pps data");
+            continue;
+        }
+        if (H264_IS_AUD(p[nalu_type_pos])) {
             continue;
         }
 
@@ -142,13 +149,13 @@ void RtmpPublish::SendVideo(Media_Packet_Ptr pkt_ptr) {
     
     p[0] = 0;
     if (pkt_ptr->codec_type_ == MEDIA_CODEC_H264) {
-    p[0] |= FLV_VIDEO_H264_CODEC;
+        p[0] |= FLV_VIDEO_H264_CODEC;
     } else if (pkt_ptr->codec_type_ == MEDIA_CODEC_H265) {
-    p[0] |= FLV_VIDEO_H265_CODEC;
+        p[0] |= FLV_VIDEO_H265_CODEC;
     } else if (pkt_ptr->codec_type_ == MEDIA_CODEC_VP8) {
-    p[0] |= FLV_VIDEO_VP8_CODEC;
+        p[0] |= FLV_VIDEO_VP8_CODEC;
     } else if (pkt_ptr->codec_type_ == MEDIA_CODEC_VP9) {
-    p[0] |= FLV_VIDEO_VP9_CODEC;
+        p[0] |= FLV_VIDEO_VP9_CODEC;
     }  else {
         LogErrorf(logger_, "unsuport video codec type:%d", pkt_ptr->codec_type_);
         return;
@@ -209,7 +216,7 @@ void RtmpPublish::HandleMediaData() {
         if (!pkt_ptr) {
             break;
         }
-
+        
         if (pkt_ptr->fmt_type_ == MEDIA_FORMAT_FLV) {
             SendRtmp(pkt_ptr);
             return;
@@ -252,6 +259,7 @@ void RtmpPublish::SendRtmp(Media_Packet_Ptr pkt_ptr) {
         rpt_ts_ = now_ts;
     }
 
+    // LogInfof(logger_, "rtmp publish output packet:%s", pkt_ptr->Dump(true).c_str());
     client_session_->RtmpWrite(pkt_ptr);
 }
 
@@ -278,6 +286,7 @@ int RtmpPublish::RemoveSinker(const std::string& name) {
 int RtmpPublish::SourceData(Media_Packet_Ptr pkt_ptr) {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    // LogInfof(logger_, "rtmppublish input packet:%s", pkt_ptr->Dump(true).c_str());
     packet_queue_.push(pkt_ptr);
 
     async_.data = (void*)this;
@@ -315,32 +324,221 @@ void RtmpPublish::OnMessage(int ret_code, Media_Packet_Ptr pkt_ptr) {
     LogErrorf(logger_, "rtmp publish should not receive media packet:%s", pkt_ptr->Dump().c_str());
 }
 
-void RtmpPublish::OnRtmpHandShake(int ret_code) {
-    ReportEvent("event", "handshake");
+
+void RtmpPublish::OnRtmpHandShakeSendC0C1(int ret_code, uint8_t* data, size_t len) {
+    std::string desc = Data2HexString(data, len);
+
+    ReportEvent("SendC0C1", desc);
 }
 
-void RtmpPublish::OnRtmpConnect(int ret_code) {
-    ReportEvent("event", "rtmpconnect");
+void RtmpPublish::OnRtmpHandShakeRecvS0S1S2(int ret_code, uint8_t* data, size_t len) {
+    std::string desc = Data2HexString(data, len);
+    ReportEvent("RecvS0S1S2", desc);
 }
 
-void RtmpPublish::OnRtmpCreateStream(int ret_code) {
-    ReportEvent("event", "createstream");
+void RtmpPublish::OnRtmpConnectSend(int ret_code, const std::map<std::string, std::string>& items) {
+    if (ret_code < 0) {
+        ReportEvent("RtmpConnectSend", "error");
+        return;
+    }
+    std::stringstream ss;
+    int index = 0;
+    
+    ss << "[";
+    for (auto item : items) {
+        ss << "{";
+        ss << "\"" << item.first << "\":";
+        ss << "\"" << item.second << "\"";
+        ss << "}";
+        index++;
+        if (index < items.size()) {
+            ss << ",";
+        }
+    }
+    ss << "]";
+    ReportEvent("RtmpConnectSend", ss.str());
 }
 
-void RtmpPublish::OnRtmpPlayPublish(int ret_code) {
-    ready_ = true;
-    ReportEvent("event", "publish");
+void RtmpPublish::OnRtmpConnectRecv(
+        int ret,
+        const std::string& result,
+        int64_t transaction_id,
+        const std::map<std::string, std::string>& items) {
+    if (ret < 0) {
+        ReportEvent("RtmpConnectRecv", "error");
+        return;
+    }
+    std::stringstream ss;
+    int index = 0;
+
+    ss << "{";
+    ss << "\"result\":" << "\"" << result << "\"";
+    ss << ",";
+    ss << "\"transactionId\":" << transaction_id;
+    if (items.size() > 0) {
+        ss << ",";
+        ss << "[";
+        for (auto item : items) {
+            ss << "{";
+            ss << "\"" << item.first << "\":";
+            ss << "\"" << item.second << "\"";
+            ss << "}";
+            index++;
+            if (index < items.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+    }
+    ss << "}";
+    ReportEvent("RtmpConnectRecv", ss.str());
+}
+
+void RtmpPublish::OnRtmpChunkSize(
+        int ret,
+        uint32_t chunk_size) {
+    if (ret < 0) {
+        ReportEvent("ChunkSize", "error");
+        return;
+    }
+
+    ReportEvent("ChunkSize", std::to_string(chunk_size));
+}
+
+void RtmpPublish::OnRtmpWindowSize(
+        int ret,
+        uint32_t window_size) {
+    if (ret < 0) {
+        ReportEvent("WindowSize", "error");
+        return;
+    }
+    ReportEvent("WindowSize", std::to_string(window_size));
+}
+
+void RtmpPublish::OnRtmpBandWidth(
+        int ret,
+        uint32_t bandwidth) {
+    if (ret < 0) {
+        ReportEvent("BandWidth", "error");
+        return;
+    }
+    ReportEvent("BandWidth", std::to_string(bandwidth));
+}
+
+void RtmpPublish::OnRtmpCtrlAck() {
+    ReportEvent("CtrlAck", "ok");
+}
+
+void RtmpPublish::OnRtmpCreateStreamSend(
+        int ret,
+        int64_t transaction_id) {
+    if (ret < 0) {
+        ReportEvent("CreateStreamSend", "error");
+        return;
+    }
+    std::stringstream ss;
+
+    ss << "{";
+    ss << "\"transactionId\":" << transaction_id;
+    ss << "}";
+    ReportEvent("CreateStreamSend", ss.str());
+}
+
+void RtmpPublish::OnRtmpCreateStreamRecv(
+        int ret,
+        const std::string& result,
+        int64_t transaction_id,
+        int64_t stream_id,
+        const std::map<std::string, std::string>& items) {
+    if (ret < 0) {
+        ReportEvent("CreateStreamRecv", "error");
+        return;
+    }
+    std::stringstream ss;
+    int index = 0;
+
+    ss << "{";
+    ss << "\"result\":" << "\"" << result << "\"";
+    ss << ",";
+    ss << "\"transactionId\":" << transaction_id;
+    ss << ",";
+    ss << "\"streamId\":" << stream_id;
+    if (items.size() > 0) {
+        ss << ",";
+        ss << "[";
+        for (auto item : items) {
+            ss << "{";
+            ss << "\"" << item.first << "\":";
+            ss << "\"" << item.second << "\"";
+            ss << "}";
+            index++;
+            if (index < items.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+    }
+    ss << "}";
+    ReportEvent("CreateStreamRecv", ss.str());
+}
+
+void RtmpPublish::OnRtmpPlayPublishSend(
+        const std::string& oper,//play or publish
+        int64_t transaction_id,
+        const std::string stream_name) {
+    std::stringstream ss;
+
+    ss << "{";
+    ss << "\"oper\":" << "\"" << oper << "\"";
+    ss << ",";
+    ss << "\"transactionId\":" << transaction_id;
+    ss << ",";
+    ss << "\"streamname\":" << "\"" << stream_name << "\"";
+    ss << "}";
+    ReportEvent("PlayPublishSend", ss.str());
+}
+
+void RtmpPublish::OnRtmpPlayPublishRecv(
+        int ret,
+        const std::string& status,
+        int64_t transaction_id,
+        const std::map<std::string, std::string>& items) {
+    std::stringstream ss;
+    int index = 0;
+
+    if (ret < 0) {
+        ReportEvent("PlayPublishRecv", "error");
+        return;
+    }
+    ss << "{";
+    ss << "\"status\":" << "\"" << status << "\"";
+    ss << ",";
+    ss << "\"transactionId\":" << transaction_id;
+    if (items.size() > 0) {
+        ss << ",";
+        ss << "\"objs\":[";
+        for (auto item : items) {
+            ss << "{";
+            ss << "\"" << item.first << "\":";
+            ss << "\"" << item.second << "\"";
+            ss << "}";
+            index++;
+            if (index < items.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+    }
+    
+    ss << "}";
+
+    ready_ = (status == "_result");
+    ReportEvent("PlayPublishRecv", ss.str());
 }
 
 void RtmpPublish::OnClose(int ret_code) {
-    LogInfof(logger_, "rtmp publis on close, ready_:%s", 
-            ready_ ? "true" : "false");
-    if (ready_) {
-        ReportEvent("event", "close");
-    }
-    ready_ = false;
+    ReportEvent("close", "");
 }
-
 
 void RtmpPublish::OnWork() {
     loop_ = (uv_loop_t*)malloc(sizeof(uv_loop_t));
@@ -359,7 +557,7 @@ void RtmpPublish::OnWork() {
 
 void RtmpPublish::Init() {
     LogInfof(logger_, "rtmp publish init, src url:%s", src_url_.c_str());
-    client_session_ = new RtmpClientSession(loop_, this, logger_);
+    client_session_ = new RtmpClientSession(loop_, this, this, logger_);
     client_session_->Start(src_url_, true);
 }
 

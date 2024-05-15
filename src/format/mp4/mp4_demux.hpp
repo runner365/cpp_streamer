@@ -35,6 +35,7 @@ public:
     virtual void SetReporter(StreamerReport* reporter) override;
 
 private:
+    void OnRead();
     void Output(Media_Packet_Ptr pkt_ptr);
     void makeMovItems();
     void getSampleInfoInChunk(uint32_t chunk_offset, size_t chunk_index,
@@ -48,6 +49,7 @@ private:
     void adjustAllDts();
     void handleMovItems();
     void handleH264SpsPps(const TrakInfo& trakinfo);
+    void handleH265VpsSpsPps(const TrakInfo& trakinfo);
     void handleAACExtraData(const TrakInfo& trakinfo);
     void sendMediaPacket(MEDIA_PKT_TYPE av_type, MEDIA_CODEC_TYPE codec_type,
         int64_t dts, int64_t pts, 

@@ -62,7 +62,7 @@ public:
     virtual void OnReport(const std::string& name,
             const std::string& type,
             const std::string& value) override {
-        LogWarnf(logger_, "report name:%s, type:%s, value:%s",
+        LogInfof(logger_, "report name:%s, type:%s, value:%s",
                 name.c_str(), type.c_str(), value.c_str());
     }
 
@@ -81,10 +81,6 @@ public:
     }
     virtual int SourceData(Media_Packet_Ptr pkt_ptr) override {
         LogInfof(logger_, "packet:%s", pkt_ptr->Dump().c_str());
-        if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
-            LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), 
-                    pkt_ptr->buffer_ptr_->DataLen(), "audio data");
-        }
         return 0;
     }
     virtual void StartNetwork(const std::string& url, void* loop_handle) override {

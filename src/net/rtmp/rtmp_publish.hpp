@@ -26,7 +26,7 @@ void* make_rtmppublish_streamer();
 void destroy_rtmppublish_streamer(void* streamer);
 }
 
-class RtmpPublish : public CppStreamerInterface, public RtmpClientCallbackI
+class RtmpPublish : public CppStreamerInterface, public RtmpClientDataCallbackI, public RtmpClientCtrlCallbackI
 {
 friend void SourceRtmpData(uv_async_t *handle);
 
@@ -44,12 +44,47 @@ public:
     virtual void AddOption(const std::string& key, const std::string& value) override;
     virtual void SetReporter(StreamerReport* reporter) override;
 
-public:
+public:// RtmpClientDataCallbackI
     virtual void OnMessage(int ret_code, Media_Packet_Ptr pkt_ptr) override;
-    virtual void OnRtmpHandShake(int ret_code) override;
-    virtual void OnRtmpConnect(int ret_code) override;
-    virtual void OnRtmpCreateStream(int ret_code) override;
-    virtual void OnRtmpPlayPublish(int ret_code) override;
+
+public:// RtmpClientCtrlCallbackI
+    virtual void OnRtmpHandShakeSendC0C1(int ret_code, uint8_t* data, size_t len) override;
+    virtual void OnRtmpHandShakeRecvS0S1S2(int ret_code, uint8_t* data, size_t len) override;
+    virtual void OnRtmpConnectSend(int ret_code,
+        const std::map<std::string, std::string>& items) override;
+    virtual void OnRtmpConnectRecv(
+        int ret,
+        const std::string& result,
+        int64_t transaction_id,
+        const std::map<std::string, std::string>& items) override;
+    virtual void OnRtmpChunkSize(
+        int ret,
+        uint32_t chunk_size) override;
+    virtual void OnRtmpWindowSize(
+        int ret,
+        uint32_t window_size) override;
+    virtual void OnRtmpBandWidth(
+        int ret,
+        uint32_t bandwidth) override;
+    virtual void OnRtmpCtrlAck() override;
+    virtual void OnRtmpCreateStreamSend(
+        int ret,
+        int64_t transaction_id) override;
+    virtual void OnRtmpCreateStreamRecv(
+        int ret,
+        const std::string& result,
+        int64_t transaction_id,
+        int64_t stream_id,
+        const std::map<std::string, std::string>& items) override;
+    virtual void OnRtmpPlayPublishSend(
+        const std::string& oper,//play or publish
+        int64_t transaction_id,
+        const std::string stream_name) override;
+    virtual void OnRtmpPlayPublishRecv(
+        int ret,
+        const std::string& status,
+        int64_t transaction_id,
+        const std::map<std::string, std::string>& items) override;
     virtual void OnClose(int ret_code) override;
 
 private:

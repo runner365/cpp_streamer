@@ -104,8 +104,6 @@ int RtmpControlHandler::HandleServerCommandMessage(CHUNK_STREAM_PTR cs_ptr, std:
     }
 
     if (session_->client_phase_ != next_phase) {
-        LogInfof(logger_, "rtmp client session phase change [%s] to [%s]",
-                GetClientPhaseDesc(session_->client_phase_), GetClientPhaseDesc(next_phase));
         session_->client_phase_ = next_phase;
     }
     return 0;

@@ -103,12 +103,107 @@ int Mp4Demuxer::RemoveSinker(const std::string& name) {
     return 0;
 }
 
-int Mp4Demuxer::SourceData(Media_Packet_Ptr pkt_ptr) {
-    buffer_.AppendData(pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen());
+void Mp4Demuxer::OnRead() {
+    const int min_size = 16;
+    int64_t offset = 0;
+    std::vector<uint8_t> buffer;
+    
+    buffer.resize(min_size);
 
+    while (true) {
+        uint8_t* p = (uint8_t*)&buffer[0];
+        int ret = io_reader_->Read(offset, p, min_size);
+        if (ret < min_size) {
+            return;
+        }
+        std::string box_type;
+        int mov_offset = 0;
+        uint64_t box_size = GetBoxHeaderInfo(p, box_type, mov_offset);
+        if (box_size > buffer.size()) {
+            buffer.resize(box_size);
+        }
+        p = (uint8_t*)&buffer[0];
+        ret = io_reader_->Read(offset, p, box_size);
+        if (ret < box_size) {
+            return;
+        }
+        offset += box_size;
+
+        if (box_type == "ftyp") {
+            ftyp_box_ = new FtypBox();
+            p = ftyp_box_->Parse(p, mov_);
+
+            if (options_["box_detail"] == "true") {
+                Media_Packet_Ptr output_pkt_ptr = std::make_shared<Media_Packet>();
+                output_pkt_ptr->av_type_ = MEDIA_MOVBOX_TYPE;
+                output_pkt_ptr->box_type_ = box_type;
+                output_pkt_ptr->box_ = (void*)ftyp_box_;
+                Output(output_pkt_ptr);
+            }
+        } else if (box_type == "moov") {
+            moov_box_ = new MoovBox();
+            p = moov_box_->Parse(p, mov_);
+
+            if (options_["box_detail"] == "true") {
+                Media_Packet_Ptr output_pkt_ptr = std::make_shared<Media_Packet>();
+                output_pkt_ptr->av_type_ = MEDIA_MOVBOX_TYPE;
+                output_pkt_ptr->box_type_ = box_type;
+                output_pkt_ptr->box_ = (void*)moov_box_;
+                Output(output_pkt_ptr);
+            }
+
+            makeMovItems();
+
+            adjustAllDts();
+
+            handleMovItems();
+        } else if (box_type == "free") {
+            free_box_ = new FreeBox();
+            p = free_box_->Parse(p);
+
+            if (options_["box_detail"] == "true") {
+                Media_Packet_Ptr output_pkt_ptr = std::make_shared<Media_Packet>();
+                output_pkt_ptr->av_type_ = MEDIA_MOVBOX_TYPE;
+                output_pkt_ptr->box_type_ = box_type;
+                output_pkt_ptr->box_ = (void*)free_box_;
+                Output(output_pkt_ptr);
+            }
+        } else if (box_type == "mdat") {
+            mdat_box_ = new MdatBox();
+            p = mdat_box_->Parse(p, mov_);
+
+            if (options_["box_detail"] == "true") {
+                Media_Packet_Ptr output_pkt_ptr = std::make_shared<Media_Packet>();
+                output_pkt_ptr->av_type_ = MEDIA_MOVBOX_TYPE;
+                output_pkt_ptr->box_type_ = box_type;
+                output_pkt_ptr->box_ = (void*)mdat_box_;
+                Output(output_pkt_ptr);
+            }
+        } else {
+            Mp4BoxBase* box = new Mp4BoxBase();
+            box->Parse(p);
+            p += box->box_size_;
+            unknown_boxes_.push_back(box);
+
+            if (options_["box_detail"] == "true") {
+                Media_Packet_Ptr output_pkt_ptr = std::make_shared<Media_Packet>();
+                output_pkt_ptr->av_type_ = MEDIA_MOVBOX_TYPE;
+                output_pkt_ptr->box_type_ = box->type_;
+                output_pkt_ptr->box_ = (void*)box;
+                Output(output_pkt_ptr);
+            }
+        }
+    }
+}
+
+int Mp4Demuxer::SourceData(Media_Packet_Ptr pkt_ptr) {
     if (pkt_ptr->io_reader_) {
         io_reader_ = pkt_ptr->io_reader_;
+        OnRead();
+        return 0;
     }
+    buffer_.AppendData(pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen());
+
     uint8_t* p = (uint8_t*)buffer_.Data();
     while (p < (uint8_t*)(buffer_.Data() + buffer_.DataLen())) {
         std::string box_type;
@@ -448,11 +543,75 @@ void Mp4Demuxer::handleAACExtraData(const TrakInfo& trakinfo) {
             data, data_len);
 }
 
-void Mp4Demuxer::handleH264SpsPps(const TrakInfo& trakinfo) {
+void Mp4Demuxer::handleH265VpsSpsPps(const TrakInfo& trakinfo) {
     if (trakinfo.handler_type_ != "vide") {
+        CSM_THROW_ERROR("wrong media type(%s) exception", trakinfo.handler_type_.c_str());
+    }
+    if (trakinfo.codec_type_ != MEDIA_CODEC_H265) {
+        CSM_THROW_ERROR("wrong codec type(%s) exception", codectype_tostring(trakinfo.codec_type_).c_str());
         return;
     }
+    uint8_t* extra_data = (uint8_t*)(&trakinfo.sequence_data_[0]);
+    int extra_len = (int)trakinfo.sequence_data_.size();
+    HEVC_DEC_CONF_RECORD hevc_dec_info;
+    uint8_t vps[2048];
+    uint8_t sps[2048];
+    uint8_t pps[2048];
+    size_t vps_len = 0;
+    size_t sps_len = 0;
+    size_t pps_len = 0;
+
+    GetHevcDecInfoFromExtradata(&hevc_dec_info, extra_data, extra_len);
+
+    GetVpsSpsPpsFromHevcDecInfo(&hevc_dec_info, vps + 5, vps_len, sps + 5, sps_len, pps + 5, pps_len);
+
+    vps[0] = 0;
+    vps[1] = 0;
+    vps[2] = 0;
+    vps[3] = 1;
+
+    sps[0] = 0;
+    sps[1] = 0;
+    sps[2] = 0;
+    sps[3] = 1;
+
+    pps[0] = 0;
+    pps[1] = 0;
+    pps[2] = 0;
+    pps[3] = 1;
+
+    for (const HEVC_NALUnit& item : hevc_dec_info.nalu_vec) {
+        if (item.nal_unit_type == NAL_UNIT_VPS) {
+            vps[4] = item.nal_unit_type;
+        } else if (item.nal_unit_type == NAL_UNIT_SPS) {
+            sps[4] = item.nal_unit_type;
+        } else if (item.nal_unit_type == NAL_UNIT_PPS) {
+            pps[4] = item.nal_unit_type;
+        } else {
+            continue;
+        }
+    }
+
+    sendMediaPacket(MEDIA_VIDEO_TYPE, trakinfo.codec_type_,
+        0, 0,
+        false, true,
+        vps, vps_len);
+    sendMediaPacket(MEDIA_VIDEO_TYPE, trakinfo.codec_type_,
+        0, 0,
+        false, true,
+        sps, sps_len);
+    sendMediaPacket(MEDIA_VIDEO_TYPE, trakinfo.codec_type_,
+        0, 0,
+        false, true,
+        pps, pps_len);
+}
+
+void Mp4Demuxer::handleH264SpsPps(const TrakInfo& trakinfo) {
+    if (trakinfo.handler_type_ != "vide") {
+        CSM_THROW_ERROR("wrong media type(%s) exception", trakinfo.handler_type_.c_str());
+    }
     if (trakinfo.codec_type_ != MEDIA_CODEC_H264) {
+        CSM_THROW_ERROR("wrong codec type(%s) exception", codectype_tostring(trakinfo.codec_type_).c_str());
         return;
     }
 
@@ -495,6 +654,8 @@ void Mp4Demuxer::makeMovItems() {
         if (trakinfo.handler_type_ == "vide") {
             if (trakinfo.codec_type_ == MEDIA_CODEC_H264) {
                 handleH264SpsPps(trakinfo);
+            } else if (trakinfo.codec_type_ == MEDIA_CODEC_H265) {
+                handleH265VpsSpsPps(trakinfo);
             } else {
                 CSM_THROW_ERROR("not support video codec:%s", codectype_tostring(trakinfo.codec_type_).c_str());
             }

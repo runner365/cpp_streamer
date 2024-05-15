@@ -19,14 +19,56 @@
 namespace cpp_streamer
 {
 
-class RtmpClientCallbackI
+class RtmpClientDataCallbackI
 {
 public:
     virtual void OnMessage(int ret_code, Media_Packet_Ptr pkt_ptr) = 0;
-    virtual void OnRtmpHandShake(int ret_code) = 0;
-    virtual void OnRtmpConnect(int ret_code) = 0;
-    virtual void OnRtmpCreateStream(int ret_code) = 0;
-    virtual void OnRtmpPlayPublish(int ret_code) = 0;
+};
+
+class RtmpClientCtrlCallbackI
+{
+public:
+    virtual void OnRtmpHandShakeSendC0C1(int ret_code, uint8_t* data, size_t len) = 0;
+    virtual void OnRtmpHandShakeRecvS0S1S2(int ret_code, uint8_t* data, size_t len) = 0;
+    virtual void OnRtmpConnectSend(int ret_code,
+        const std::map<std::string, std::string>& items) = 0;
+    virtual void OnRtmpConnectRecv(
+        int ret,
+        const std::string& result,
+        int64_t transaction_id,
+        const std::map<std::string, std::string>& items) = 0;
+    
+    virtual void OnRtmpChunkSize(
+        int ret,
+        uint32_t chunk_size) = 0;
+    virtual void OnRtmpWindowSize(
+        int ret,
+        uint32_t window_size) = 0;
+    virtual void OnRtmpBandWidth(
+        int ret,
+        uint32_t bandwidth) = 0;
+    virtual void OnRtmpCtrlAck() = 0;
+
+    virtual void OnRtmpCreateStreamSend(
+        int ret,
+        int64_t transaction_id) = 0;
+    virtual void OnRtmpCreateStreamRecv(
+        int ret,
+        const std::string& result,
+        int64_t transaction_id,
+        int64_t stream_id,
+        const std::map<std::string, std::string>& items) = 0;
+
+    virtual void OnRtmpPlayPublishSend(
+        const std::string& oper,//play or publish
+        int64_t transaction_id,
+        const std::string stream_name) = 0;
+
+    virtual void OnRtmpPlayPublishRecv(
+        int ret,
+        const std::string& status,
+        int64_t transaction_id,
+        const std::map<std::string, std::string>& items) = 0;
     virtual void OnClose(int ret_code) = 0;
 };
 
@@ -42,7 +84,8 @@ friend class RtmpWriter;
 
 public:
     RtmpClientSession(uv_loop_t* loop,
-            RtmpClientCallbackI* callback,
+            RtmpClientDataCallbackI* data_cb,
+            RtmpClientCtrlCallbackI* ctrl_cb,
             Logger* logger = nullptr);
     virtual ~RtmpClientSession();
 
@@ -74,8 +117,16 @@ private://rtmp client behavior
     int HandleMessage();
 
 private:
+    void getItemMap(AMF_ITERM* item, std::map<std::string, std::string>& items);
+    void reportConnectRespAmf(int ret, const std::vector<AMF_ITERM*>& amf_vec);
+    void reportCreateStreamRespAmf(int ret, const std::vector<AMF_ITERM*>& amf_vec);
+    void reportPlayPublishRespAmf(int ret, const std::vector<AMF_ITERM*>& amf_vec);
+    void reportCtrlMsg(CHUNK_STREAM_PTR cs_ptr);
+
+private:
     TcpClient conn_;
-    RtmpClientCallbackI* cb_;
+    RtmpClientDataCallbackI* data_cb_ = nullptr;
+    RtmpClientCtrlCallbackI* ctrl_cb_ = nullptr;
     RtmpClientHandshake hs_;
 
 private:

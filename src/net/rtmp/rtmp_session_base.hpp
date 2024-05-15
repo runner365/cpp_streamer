@@ -24,13 +24,15 @@ typedef enum {
 
 typedef enum {
     client_initial_phase = -1,
-    client_c0c1_phase,
-    client_connect_phase,
-    client_connect_resp_phase,
-    client_create_stream_phase,
-    client_create_stream_resp_phase,
-    client_create_play_phase,
-    client_create_publish_phase,
+    client_c0c1_phase, // 0
+    client_s0s1s2_phase, // 1
+    client_connect_phase, // 2
+    client_connect_resp_phase, // 3
+    client_create_stream_phase, // 4
+    client_create_stream_resp_phase, // 5
+    client_create_play_phase, // 6
+    client_create_publish_phase, // 7
+    client_create_playpublish_resp_phase, // 8
     client_media_handle_phase
 } RTMP_CLIENT_SESSION_PHASE;
 

@@ -74,16 +74,11 @@ public:
             const std::string& value) override {
         LogWarnf(logger_, "report name:%s, type:%s, value:%s",
                 name.c_str(), type.c_str(), value.c_str());
-        if (type == "event") {
-            if (value == "publish") {
+        if (type == "PlayPublishRecv") {
+            size_t pos = value.find("_result");
+            if (pos != value.npos) {
                 rtmp_ready_ = true;
             }
-            if (value == "close") {
-                rtmp_ready_ = false;
-            }
-        }
-        if (type == "error") {
-            rtmp_ready_ = false;
         }
     }
 

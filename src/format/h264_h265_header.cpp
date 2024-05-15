@@ -1,8 +1,34 @@
 #include "h264_h265_header.hpp"
 #include "byte_stream.hpp"
+#include "stringex.hpp"
+
+#include <sstream>
 
 namespace cpp_streamer
 {
+
+void GetHevcHeader(uint8_t* data, Hevc_Header& header) {
+    uint8_t* p = data;
+
+    header.forbid = ((*p) >> 7) & 0x01;
+    header.nalu_type = ((*p) >> 1) & 0x3f;
+    header.layer_id = ((*p) & 0x01) << 6;
+    p++;
+    header.layer_id |= ((*p) & 0xf8) >> 3;
+    header.tid = (*p) & 0x07;
+}
+
+std::string HevcHeaderDump(const Hevc_Header& header) {
+    std::stringstream ss;
+
+    ss << "{";
+    ss << "\"forbid\":" << (int)header.forbid << ",";
+    ss << "\"nalu_type\":" << (int)header.nalu_type << ",";
+    ss << "\"layer_id\":" << (int)header.layer_id << ",";
+    ss << "\"tid\":" << (int)header.tid;
+    ss << "}";
+    return ss.str();
+}
 
 bool AnnexB2Nalus(uint8_t* data, size_t len, std::vector<std::shared_ptr<DataBuffer>>& nalus) {
     if (len < 4) {
@@ -40,7 +66,7 @@ bool AnnexB2Nalus(uint8_t* data, size_t len, std::vector<std::shared_ptr<DataBuf
         } else {
             nalu_len = (size_t)end_pos - current_pos;
         }
-        std::shared_ptr<DataBuffer> data_ptr = std::make_shared<DataBuffer>();
+        std::shared_ptr<DataBuffer> data_ptr = std::make_shared<DataBuffer>(nalu_len + 1024);
         data_ptr->AppendData((char*)current_pos, nalu_len);
         nalus.push_back(data_ptr);
     }
@@ -84,7 +110,7 @@ bool AnnexB2Avcc(uint8_t* data, size_t len, std::vector<std::shared_ptr<DataBuff
 
         ByteStream::Write4Bytes(header, nalu_size);
 
-        std::shared_ptr<DataBuffer> buffer_ptr = std::make_shared<DataBuffer>();
+        std::shared_ptr<DataBuffer> buffer_ptr = std::make_shared<DataBuffer>(nalu_size + 1024);
         buffer_ptr->AppendData((char*)header, sizeof(header));
         buffer_ptr->AppendData((char*)current_pos, nalu_size);
 
@@ -198,6 +224,59 @@ int GetVpsSpsPpsFromHevcDecInfo(HEVC_DEC_CONF_RECORD* hevc_dec_info,
     return 0;
 }
 
+std::string HevcDecInfoDemp(HEVC_DEC_CONF_RECORD* hevc_dec_info) {
+    std::stringstream ss;
+
+    ss << "{";
+    ss << "\"configuration_version\":" << (int)hevc_dec_info->configuration_version << ",";
+    ss << "\"general_profile_space\":" << (int)hevc_dec_info->general_profile_space << ",";
+    ss << "\"general_tier_flag\":" << (int)hevc_dec_info->general_tier_flag << ",";
+    ss << "\"general_profile_idc\":" << (int)hevc_dec_info->general_profile_idc << ",";
+    ss << "\"general_profile_compatibility_flags\":" << (int)hevc_dec_info->general_profile_compatibility_flags << ",";
+    ss << "\"general_constraint_indicator_flags\":" << (int)hevc_dec_info->general_constraint_indicator_flags << ",";
+    ss << "\"general_level_idc\":" << (int)hevc_dec_info->general_level_idc << ",";
+    ss << "\"min_spatial_segmentation_idc\":" << (int)hevc_dec_info->min_spatial_segmentation_idc << ",";
+    ss << "\"parallelism_type\":" << (int)hevc_dec_info->parallelism_type << ",";
+    ss << "\"chroma_format\":" << (int)hevc_dec_info->chroma_format << ",";
+    ss << "\"bitdepth_lumaminus8\":" << (int)hevc_dec_info->bitdepth_lumaminus8 << ",";
+    ss << "\"bitdepth_chromaminus8\":" << (int)hevc_dec_info->bitdepth_chromaminus8 << ",";
+    ss << "\"avg_framerate\":" << (int)hevc_dec_info->avg_framerate << ",";
+    ss << "\"constant_frameRate\":" << (int)hevc_dec_info->constant_frameRate << ",";
+    ss << "\"num_temporallayers\":" << (int)hevc_dec_info->num_temporallayers << ",";
+    ss << "\"temporalid_nested\":" << (int)hevc_dec_info->temporalid_nested << ",";
+    ss << "\"lengthsize_minusone\":" << (int)hevc_dec_info->lengthsize_minusone << ",";
+
+    int i = 0;
+    ss << "\"nalus\":" << "[";
+    for(const HEVC_NALUnit& hevc_unit : hevc_dec_info->nalu_vec) {
+        ss << "{";
+        ss << "\"array_completeness\":" << (int)hevc_unit.array_completeness << ",";
+        ss << "\"nal_unit_type\":" << (int)(hevc_unit.nal_unit_type) << ",";
+        ss << "\"num_nalus\":" << (int)hevc_unit.num_nalus << ",";
+        ss << "\"nal_data_vec\":" << "[";
+        int index = 0;
+        for (const HEVC_NALU_DATA& nalu_data : hevc_unit.nal_data_vec) {
+            uint8_t* data = (uint8_t*)&(nalu_data.nalu_data[0]);
+            std::string hex_str = DataToString(data, nalu_data.nalu_data.size());
+            ss << "{";
+            ss << "\"" << index++ << "\":" << "\"" << hex_str << "\"";
+            ss << "}";
+            if (index < hevc_unit.nal_data_vec.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+        ss << "}";
+        if ((++i) < hevc_dec_info->nalu_vec.size()) {
+            ss << ",";
+        }
+    }
+    ss << "]";
+    ss << "}";
+
+    return ss.str();
+}
+
 int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info, 
                                 const uint8_t *extra_data, size_t extra_len)
 {
@@ -274,7 +353,7 @@ int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info,
             return -1;
         }
         hevc_unit.array_completeness = (*p >> 7) & 0x01;
-        hevc_unit.nal_unit_type = *p & 0x3f;
+        hevc_unit.nal_unit_type = (*p) & 0x3f;
         p++;
         hevc_unit.num_nalus = ByteStream::Read2Bytes(p);
         p += 2;

@@ -64,26 +64,33 @@ public:
         {
             case AMF_DATA_TYPE_NUMBER:
             {
-                ss << "amf type: number, value:" <<  number_;
+                ss <<  std::to_string(number_);
                 break;
             }
             case AMF_DATA_TYPE_BOOL:
             {
-                ss << "amf type: bool, value:" << enable_;
+                ss << (enable_ ? "true" : "false");
                 break;
             }
             case AMF_DATA_TYPE_STRING:
             {
-                ss << "amf type: string, value:" << desc_str_;
+                ss << "\"" << desc_str_ << "\"";
                 break;
             }
             case AMF_DATA_TYPE_OBJECT:
+            case AMF_DATA_TYPE_MIXEDARRAY:
             {
-                ss << "amf type: object, count:" << amf_obj_.size() << "\r\n";
+                int i = 0;
+                ss << "{";
                 for (auto iter : amf_obj_) {
-                    ss << "object key:" << iter.first.c_str() << "\r\n";
-                    ss << iter.second->DumpAmf() << "\r\n";
+                    ss << "\"" << iter.first.c_str() << "\":";
+                    ss << iter.second->DumpAmf();
+                    i++;
+                    if (i < amf_obj_.size()) {
+                        ss << ",";
+                    }
                 }
+                ss << "}";
                 break;
             }
             case AMF_DATA_TYPE_NULL:
@@ -101,35 +108,41 @@ public:
                 ss << "not support for reference";
                 break;
             }
-            case AMF_DATA_TYPE_MIXEDARRAY:
-            {
-                ss << "amf type: ecma array, count:" << amf_obj_.size() << "\r\n";
-                for (auto iter : amf_obj_) {
-                    ss << "object key:" <<  iter.first.c_str()  << "\r\n";
-                    ss << iter.second->DumpAmf() << "\r\n";
-                }
-                break;
-            }
             case AMF_DATA_TYPE_ARRAY:
             {
-                ss << "amf type: strict array, count:" <<  amf_array_.size() << "\r\n";
+                int i = 0;
+                ss << "{";
                 for (auto iter : amf_array_) {
-                    ss << iter->DumpAmf() << "\r\n";
+                    ss << "\"" << std::to_string(i) << "\":";
+                    ss << iter->DumpAmf();
+                    i++;
+                    if (i < amf_array_.size()) {
+                        ss << ",";
+                    }
                 }
+                ss << "}";
                 break;
             }
             case AMF_DATA_TYPE_DATE:
             {
-                ss << "amf type: date, number:" << number_;
+                ss << std::to_string(number_);
                 break;
             }
             case AMF_DATA_TYPE_LONG_STRING:
             {
-                ss << "amf type: long string, string:" <<  desc_str_;
+                ss << "\"" <<  desc_str_ << "\"";
+                break;
+            }
+            case AMF_DATA_TYPE_UNKNOWN:
+            {
+                ss << " ";
                 break;
             }
             default:
+            {
+                ss << "\"unknown type:" << std::to_string(amf_type_) << "\"";
                 break;
+            }
         }
         return ss.str();
     }
@@ -352,12 +365,15 @@ public:
                 left_len -= 2;
 
                 std::string desc((char*)data, str_len);
+                char* dsc = new char[str_len + 1];
 
+                snprintf(dsc, str_len + 1, "%s", desc.c_str());
                 amf_item.SetAmfType(amf_type);
-                amf_item.desc_str_ = desc;
+                amf_item.desc_str_ = dsc;
 
                 data += str_len;
                 left_len -= str_len;
+                delete[] dsc;
                 break;
             }
             case AMF_DATA_TYPE_OBJECT:

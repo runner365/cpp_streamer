@@ -110,6 +110,13 @@ enum HEVC_NALU_TYPE
 
 #define GET_HEVC_NALU_TYPE(code) (HEVC_NALU_TYPE)((code & 0x7E)>>1)
 
+typedef struct Hevc_Header_S {
+    uint8_t forbid;
+    uint8_t nalu_type;
+    uint8_t layer_id;
+    uint8_t tid;
+} Hevc_Header;
+
 typedef struct HEVC_NALU_DATA_S {
     std::vector<uint8_t>  nalu_data;
 } HEVC_NALU_DATA;
@@ -220,6 +227,11 @@ int GetVpsSpsPpsFromHevcDecInfo(HEVC_DEC_CONF_RECORD* hevc_dec_info,
 
 int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info, 
                                 const uint8_t *extra_data, size_t extra_len);
+
+std::string HevcDecInfoDemp(HEVC_DEC_CONF_RECORD* hevc_dec_info);
+
+void GetHevcHeader(uint8_t* data, Hevc_Header& header);
+std::string HevcHeaderDump(const Hevc_Header& header);
 
 }
 #endif

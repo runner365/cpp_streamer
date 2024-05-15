@@ -36,6 +36,7 @@ ENDIF ()
 ## read a mp4 file --> mp4demux streamer --> dump mp4 information
 add_executable(mp4dump
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/h264_h265_header.cpp
             ${PROJECT_SOURCE_DIR}/src/tools/mp4dump.cpp)
 add_dependencies(mp4dump mp4demux)
 IF (APPLE)
