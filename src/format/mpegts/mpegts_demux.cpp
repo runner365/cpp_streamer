@@ -136,10 +136,10 @@ int MpegtsDemux::DecodeUnit(unsigned char* data_p)
     pos++;
     npos = pos;
 
-    //LogInfof(logger_, "ts header(0x%02x) payload_unit_start_indicator:%d, pid:%d, adaptation_field_control:%d, pos:%d, data[%d]:%d\r\n", 
-    //    ts_header_info._sync_byte,
-    //    ts_header_info._payload_unit_start_indicator, ts_header_info._PID,
-    //    ts_header_info._adaptation_field_control, pos, pos, data_p[pos]);
+    // LogInfof(logger_, "ts header(0x%02x) payload_unit_start_indicator:%d, pid:%d, adaptation_field_control:%d, pos:%d, data[%d]:%d\r\n", 
+    //     ts_header_info._sync_byte,
+    //     ts_header_info._payload_unit_start_indicator, ts_header_info._PID,
+    //     ts_header_info._adaptation_field_control, pos, pos, data_p[pos]);
 
     AdaptationField* field_p = &(ts_header_info._adaptation_field_info);
     // adaptation field
@@ -288,6 +288,7 @@ int MpegtsDemux::DecodeUnit(unsigned char* data_p)
             }
 //               CRC_32 use pat to calc crc32, eq
             pos += 4;
+            reportPat();
         }else if(ts_header_info._PID == 0x01){
             // CAT // conditional access table
         }else if(ts_header_info._PID == 0x02){
@@ -380,6 +381,7 @@ int MpegtsDemux::DecodeUnit(unsigned char* data_p)
                 _pmt._pid2steamtype.insert(std::make_pair((unsigned short)pid_info._elementary_PID, pid_info._stream_type));
             }
             pos += 4;//CRC_32
+            reportPmt();
         }else if(ts_header_info._PID == 0x0042){
             // USER
         }else if(ts_header_info._PID == 0x1FFF){
@@ -526,6 +528,10 @@ void MpegtsDemux::OnCallback(unsigned short pid, uint64_t dts, uint64_t pts) {
     _data_buffer_vec.clear();
     _data_total = 0;
 
+    if (media_type == MEDIA_UNKOWN_TYPE) {
+        LogInfof(logger_, "pid:%d, buffer len:%lu, data:%s", pid, pkt_ptr->buffer_ptr_->DataLen(),
+            std::string(pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen()).c_str());
+    }
     if (media_type == MEDIA_VIDEO_TYPE) {
         std::vector<std::shared_ptr<DataBuffer>> databuffers;
         bool ret = AnnexB2Nalus((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
@@ -872,5 +878,18 @@ int MpegtsDemux::PesParse(unsigned char* p, size_t npos,
     
     return pos;
 }
+
+void MpegtsDemux::reportPat() {
+    std::string rpt = _pat.Dump();
+
+    ReportEvent("pat", rpt);
+}
+
+void MpegtsDemux::reportPmt() {
+    std::string rpt = _pmt.Dump();
+
+    ReportEvent("pmt", rpt);
+}
+
 }
 

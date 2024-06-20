@@ -8,6 +8,7 @@
 #include <vector>
 #include <stdint.h>
 #include <map>
+#include <sstream>
 
 namespace cpp_streamer
 {
@@ -203,6 +204,35 @@ class PatInfo {
         PatInfo(){};
         ~PatInfo(){};
 
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "{";
+        ss << "\"tableid\":" << (int)_table_id << ",";
+        ss << "\"section_syntax_indicator\":" << (int)_section_syntax_indicator << ",";
+        ss << "\"section_length\":" << (int)_section_length << ",";
+        ss << "\"transport_stream_id\":" << (int)_transport_stream_id << ",";
+        ss << "\"version_number\":" << (int)_version_number << ",";
+        ss << "\"current_next_indicator\":" << (int)_current_next_indicator << ",";
+        ss << "\"section_number\":" << (int)_section_number << ",";
+        ss << "\"last_section_number\":" << (int)_last_section_number << ",";
+        ss << "\"pids\":" << "[";
+        int i = 0;
+        for (const PID_INFO& info : _pid_vec) {
+            ss << "{";
+            ss << "\"program_number\":" << info._program_number << ",";
+            ss << "\"pid\":" << info._pid << ",";
+            ss << "\"network_id\":" << info._network_id;
+            ss << "}";
+
+            if ((++i) < _pid_vec.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+        ss << "}";
+        return ss.str();
+    }
     public:
         unsigned char _table_id;
 
@@ -241,6 +271,69 @@ class PmtInfo {
     public:
         PmtInfo(){};
         ~PmtInfo(){};
+
+    std::string Dump() {
+        std::stringstream ss;
+
+        ss << "{";
+        ss << "\"tableid\":" << (int)_table_id << ",";
+        ss << "\"section_syntax_indicator\":" << (int)_section_syntax_indicator << ",";
+        ss << "\"section_length\":" << (int)_section_length << ",";
+        ss << "\"program_number\":" << (int)_program_number << ",";
+        ss << "\"version_number\":" << (int)_version_number << ",";
+        ss << "\"current_next_indicator\":" << (int)_current_next_indicator << ",";
+        ss << "\"section_number\":" << (int)_section_number << ",";
+        ss << "\"last_section_number\":" << (int)_last_section_number << ",";
+        ss << "\"PCR_PID\":" << (int)_PCR_PID << ",";
+        ss << "\"program_info_length\":" << (int)_program_info_length << ",";
+        ss << "\"desc\":" << std::string((char*)_dscr) << ",";
+        
+        if (!_pid2steamtype.empty()) {
+            int i = 0;
+            ss << "\"pid2streamtype:\"[";
+            for (const auto& item : _pid2steamtype) {
+                ss << "{";
+                ss << "\"pid\":" << (int)item.first << ",";
+                ss << "\"streamtype\":" << (int)item.second;
+                if ((++i) < _pid2steamtype.size()) {
+                    ss << ",";
+                }
+                ss << "}";
+            }
+            ss << "]";
+        }
+
+        if (!_stream_pid_vec.empty()) {
+            int i = 0;
+            ss << "\"stream_pids:\"[";
+            for (const STREAM_PID_INFO& item : _stream_pid_vec) {
+                ss << "{";
+                ss << "\"stream_type\":" << (int)item._stream_type << ",";
+                ss << "\"elementary_PID\":" << (int)item._elementary_PID << ",";
+                ss << "\"ES_info_length\":" << (int)item._ES_info_length << ",";
+                if (!item.es_info_vec.empty()) {
+                    ss << "\"es_infos\":" << "{";
+                    int es_info_index = 0;
+                    for (const ES_INFO& info : item.es_info_vec) {
+                        ss << "\"desc\":" << info.desc_ << ",";
+                        ss << "\"descriptor_tag\":" << (int)info.descriptor_tag_;
+                        if ((++es_info_index) < item.es_info_vec.size()) {
+                            ss << ",";
+                        }
+                    }
+                    ss << "}";
+                }
+                ss << "}";
+
+                if ((++i) < _stream_pid_vec.size()) {
+                    ss << ",";
+                }
+            }
+            ss << "]";
+        }
+        ss << "}";
+        return ss.str();
+    }
     public:
         unsigned char _table_id;
         unsigned short _section_syntax_indicator:1;

@@ -149,6 +149,24 @@ typedef struct HEVC_DEC_CONF_RECORD_S {
     std::vector<HEVC_NALUnit> nalu_vec;
 } HEVC_DEC_CONF_RECORD;
 
+// 9.3 L-HEVC elementary stream structure in ISO IEC 14496-15-2022.pdf
+typedef struct LHEVC_DEC_CONF_RECORD_S {
+    uint8_t  configuration_version;
+    uint16_t reserved1:4;
+    uint16_t min_spatial_segmentation_idc:12;
+
+    uint8_t reserved2:6;
+    uint8_t parallelismType:2;
+
+    uint8_t reserved3:2;
+    uint8_t numTemporalLayers:3;
+    uint8_t temporalIdNested: 1;
+    uint8_t lengthSizeMinusOne:2;
+    
+    uint8_t numOfArrays;
+    std::vector<HEVC_NALUnit> nalu_vec;
+} LHEVC_DEC_CONF_RECORD;
+
 static const uint8_t H264_START_CODE[4] = {0x00, 0x00, 0x00, 0x01};
 static const uint8_t H265_START_CODE[4] = {0x00, 0x00, 0x00, 0x01};
 
@@ -232,6 +250,10 @@ std::string HevcDecInfoDemp(HEVC_DEC_CONF_RECORD* hevc_dec_info);
 
 void GetHevcHeader(uint8_t* data, Hevc_Header& header);
 std::string HevcHeaderDump(const Hevc_Header& header);
+
+int GetLHevcDecInfoFromExtradata(LHEVC_DEC_CONF_RECORD* hevc_dec_info, 
+                                const uint8_t *extra_data, size_t extra_len);
+std::string LHevcDecInfoDump(LHEVC_DEC_CONF_RECORD* hevc_dec_info);
 
 }
 #endif

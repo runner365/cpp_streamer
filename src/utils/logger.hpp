@@ -16,7 +16,7 @@
 namespace cpp_streamer
 {
 
-#define LOGGER_BUFFER_SIZE (200*1024)
+#define LOGGER_BUFFER_SIZE (2*1024*1024)
 
 enum LOGGER_LEVEL {
     LOGGER_DEBUG_LEVEL,
@@ -32,9 +32,12 @@ public:
     Logger(const std::string filename = "", enum LOGGER_LEVEL level = LOGGER_INFO_LEVEL):filename_(filename)
     , level_(level)
     {
+        buffer_ = new char[buffer_len_];
     }
     ~Logger()
     {
+        delete[] buffer_;
+        buffer_ = nullptr;
     }
 
 public:
@@ -53,11 +56,15 @@ public:
     enum LOGGER_LEVEL GetLevel() {
         return level_;
     }
+    void AllocBuffer(size_t len) {
+        buffer_ = new char[len];
+        buffer_len_ = len;
+    }
     char* GetBuffer() {
         return buffer_;
     }
     size_t BufferSize() {
-        return sizeof(buffer_);
+        return buffer_len_;
     }
     void Logf(const char* level, const char* buffer) {
         std::stringstream ss;
@@ -83,7 +90,8 @@ public:
 private:
     std::string filename_;
     enum LOGGER_LEVEL level_;
-    char buffer_[LOGGER_BUFFER_SIZE];
+    char* buffer_ = nullptr;
+    size_t buffer_len_ = LOGGER_BUFFER_SIZE;
     bool console_enable_ = false;
 };
 

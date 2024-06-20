@@ -2,6 +2,7 @@
 #include "cpp_streamer_factory.hpp"
 #include "logger.hpp"
 #include "media_packet.hpp"
+#include "h264_h265_header.hpp"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -79,7 +80,15 @@ public:
         return 0;
     }
     virtual int SourceData(Media_Packet_Ptr pkt_ptr) override {
+
+
         LogInfof(logger_, "media packet:%s", pkt_ptr->Dump().c_str());
+        if (pkt_ptr->av_type_ == MEDIA_VIDEO_TYPE && pkt_ptr->codec_type_ == MEDIA_CODEC_H264) {
+            uint8_t* p = (uint8_t*)(pkt_ptr->buffer_ptr_->Data());
+            int pos = GetNaluTypePos(p);
+
+            LogInfof(logger_, "nalu type:0x%02x", p[pos] & 0x1f);
+        }
         return 0;
     }
     virtual void StartNetwork(const std::string& url, void* loop_handle) override {

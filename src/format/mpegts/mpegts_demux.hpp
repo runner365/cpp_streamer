@@ -46,6 +46,8 @@ private:
     void ReportEvent(const std::string& type, const std::string& value);
     int GetMediaInfoByPid(uint16_t pid, MEDIA_PKT_TYPE& media_type, MEDIA_CODEC_TYPE& codec_type);
     void Output(Media_Packet_Ptr pkt_ptr);
+    void reportPat();
+    void reportPmt();
 
 private:
     PatInfo _pat;

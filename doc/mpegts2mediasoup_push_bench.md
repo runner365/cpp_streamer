@@ -51,21 +51,21 @@ mediasoup broadcaster接口是对我提供https api做信令交换。
 
 所以，需要修改mediasoup-demo的源码server.js:
 ```
-    expressApp.param(
-        'roomId', (req, res, next, roomId) =>
-        {
-            queue.push(async () =>
-                {
-                    consumerReplicas = 0;
-                    req.room = await getOrCreateRoom({ roomId, consumerReplicas });
-                    next();
-                }).catch((error) =>
-                        {
-                            logger.error('room creation or room joining failed:%o', error);
- 
-                            reject(error);
-                        });
-        });
+expressApp.param(
+    'roomId', (req, res, next, roomId) =>
+    {
+        queue.push(async () =>
+            {
+                consumerReplicas = 0;
+                req.room = await getOrCreateRoom({ roomId, consumerReplicas });
+                next();
+            }).catch((error) =>
+                    {
+                        logger.error('room creation or room joining failed:%o', error);
+
+                        reject(error);
+                    });
+    });
 ```
 
 原有代码：在http api检测roomId的房间是否存在，若不存在，拒绝创建broadcaster;

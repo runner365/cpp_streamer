@@ -375,6 +375,109 @@ int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info,
         }
         hevc_dec_info->nalu_vec.push_back(hevc_unit);
     }
+    
     return 0;
 }
+
+std::string LHevcDecInfoDump(LHEVC_DEC_CONF_RECORD* hevc_dec_info) {
+    std::stringstream ss;
+
+    ss << "{";
+    ss << "\"configuration_version\":" << (int)hevc_dec_info->configuration_version << ",";
+    ss << "\"min_spatial_segmentation_idc\":" << (int)hevc_dec_info->min_spatial_segmentation_idc << ",";
+    ss << "\"parallelismType\":" << (int)hevc_dec_info->parallelismType << ",";
+    ss << "\"numTemporalLayers\":" << (int)hevc_dec_info->numTemporalLayers << ",";
+    ss << "\"temporalIdNested\":" << (int)hevc_dec_info->temporalIdNested << ",";
+    ss << "\"lengthSizeMinusOne\":" << (int)hevc_dec_info->lengthSizeMinusOne << ",";
+    ss << "\"numOfArrays\":" << (int)hevc_dec_info->numOfArrays << ",";
+
+    int i = 0;
+    ss << "\"nalus\":" << "[";
+    for(const HEVC_NALUnit& hevc_unit : hevc_dec_info->nalu_vec) {
+        ss << "{";
+        ss << "\"array_completeness\":" << (int)hevc_unit.array_completeness << ",";
+        ss << "\"nal_unit_type\":" << (int)(hevc_unit.nal_unit_type) << ",";
+        ss << "\"num_nalus\":" << (int)hevc_unit.num_nalus << ",";
+        ss << "\"nal_data_vec\":" << "[";
+        int index = 0;
+        for (const HEVC_NALU_DATA& nalu_data : hevc_unit.nal_data_vec) {
+            uint8_t* data = (uint8_t*)&(nalu_data.nalu_data[0]);
+            std::string hex_str = DataToString(data, nalu_data.nalu_data.size());
+            ss << "{";
+            ss << "\"" << index++ << "\":" << "\"" << hex_str << "\"";
+            ss << "}";
+            if (index < hevc_unit.nal_data_vec.size()) {
+                ss << ",";
+            }
+        }
+        ss << "]";
+        ss << "}";
+        if ((++i) < hevc_dec_info->nalu_vec.size()) {
+            ss << ",";
+        }
+    }
+    ss << "]";
+    ss << "}";
+    return ss.str();
+}
+
+int GetLHevcDecInfoFromExtradata(LHEVC_DEC_CONF_RECORD* hevc_dec_info, 
+                                const uint8_t *extra_data, size_t extra_len) {
+    const uint8_t* p = extra_data;
+    const uint8_t* end = extra_data + extra_len;
+
+    hevc_dec_info->configuration_version = *p;
+    p++;
+
+    hevc_dec_info->reserved1 = 0;
+    hevc_dec_info->min_spatial_segmentation_idc = ((uint16_t)(*p & 0x0f)) << 8;
+    p++;
+    hevc_dec_info->min_spatial_segmentation_idc |= *p & 0xff;
+    p++;
+
+    hevc_dec_info->reserved2 = 0;
+    hevc_dec_info->parallelismType = *p & 0x03;
+    p++;
+
+    hevc_dec_info->reserved3 = 0;
+    hevc_dec_info->numTemporalLayers = (*p & 0x38) > 3;
+    hevc_dec_info->temporalIdNested = (*p & 0x04) > 2;
+    hevc_dec_info->lengthSizeMinusOne = *p & 0x03;
+    p++;
+
+    hevc_dec_info->numOfArrays = *p;
+    p++;
+
+    for (int index = 0; index < hevc_dec_info->numOfArrays; index++) {
+        HEVC_NALUnit hevc_unit;
+
+        if ((p + 5) > end) {
+            return -1;
+        }
+        hevc_unit.array_completeness = (*p >> 7) & 0x01;
+        hevc_unit.nal_unit_type = (*p) & 0x3f;
+        p++;
+        hevc_unit.num_nalus = ByteStream::Read2Bytes(p);
+        p += 2;
+
+        for (int i = 0; i < hevc_unit.num_nalus; i++) {
+            HEVC_NALU_DATA data_item;
+            uint16_t nalUnitLength = ByteStream::Read2Bytes(p);
+            p += 2;
+
+            if ((p + nalUnitLength) > end) {
+                return -1;
+            }
+            //copy vps/pps/sps data
+            data_item.nalu_data.resize(nalUnitLength);
+            memcpy((uint8_t*)(&data_item.nalu_data[0]), p, nalUnitLength);
+            p += nalUnitLength;
+
+            hevc_unit.nal_data_vec.push_back(data_item);
+        }
+        hevc_dec_info->nalu_vec.push_back(hevc_unit);
+    }
+    return 0;
+}
+
 }
