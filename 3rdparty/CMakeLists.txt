@@ -4,20 +4,33 @@ set(EXTRA_CFLAGS "-I${PREFIX_DIR}/include")
 set(EXTRA_LDFLAGS "-L${PREFIX_DIR}/lib")
 set(EXTRA_LIBS "-lm -pthread -ldl")
 
-add_subdirectory(libuv)
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 
-IF (APPLE)
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
 ExternalProject_Add(openssl
     URL ${CMAKE_CURRENT_SOURCE_DIR}/openssl-1.1.1.tar.gz
     SOURCE_DIR  ${CMAKE_CURRENT_BINARY_DIR}/openssl
     BUILD_IN_SOURCE 1
     CONFIGURE_COMMAND
-        ./config --prefix=${PREFIX_DIR} no-shared
+        ./Configure --prefix=${PREFIX_DIR} darwin64-arm64-cc no-asm
         --libdir=${PREFIX_DIR}/lib
     BUILD_COMMAND make -j 4
     INSTALL_COMMAND make install_sw
     )
-ELSEIF (UNIX)
+else()
+ExternalProject_Add(openssl
+    URL ${CMAKE_CURRENT_SOURCE_DIR}/openssl-1.1.1.tar.gz
+    SOURCE_DIR  ${CMAKE_CURRENT_BINARY_DIR}/openssl
+    BUILD_IN_SOURCE 1
+    CONFIGURE_COMMAND
+        ./Configure --prefix=${PREFIX_DIR} no-asm
+        --libdir=${PREFIX_DIR}/lib
+    BUILD_COMMAND make -j 4
+    INSTALL_COMMAND make install_sw
+    )
+endif()
+
+else()
 ExternalProject_Add(openssl
     URL ${CMAKE_CURRENT_SOURCE_DIR}/openssl-1.1.1.tar.gz
     SOURCE_DIR  ${CMAKE_CURRENT_BINARY_DIR}/openssl
@@ -28,7 +41,7 @@ ExternalProject_Add(openssl
     BUILD_COMMAND make -j 4
     INSTALL_COMMAND make install_sw
     )
-ENDIF ()
+endif()
 
 ExternalProject_Add(libsrtp
     DEPENDS openssl
@@ -40,3 +53,5 @@ ExternalProject_Add(libsrtp
     BUILD_COMMAND make -j 4
     INSTALL_COMMAND make install
     )
+
+add_subdirectory(libuv)

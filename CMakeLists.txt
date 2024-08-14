@@ -16,6 +16,17 @@ SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/output/lib)
 # set pkgconfig path
 set(CMAKE_PREFIX_PATH "${CMAKE_BINARY_DIR}/output/lib/pkgconfig")
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+message("-----This is MacOs arm64")
+else()
+message("-----This is MacOs Intel")
+endif()
+else()
+message("-----This is system ${CMAKE_SYSTEM_NAME}")
+endif()
+message("")
+
 # set include path
 include_directories(${CMAKE_BINARY_DIR}/output/include
                     ${CMAKE_BINARY_DIR}/output/include/srtp2
