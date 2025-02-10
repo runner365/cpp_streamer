@@ -317,3 +317,39 @@ target_link_libraries(ws_server_demo dl z m ssl crypto pthread uv)
 ELSEIF (UNIX)
 target_link_libraries(ws_server_demo rt dl z m ssl crypto pthread uv)
 ENDIF ()
+
+################################################################
+## example: oggdump
+## read a ogg file --> oggdemux streamer --> dump ogg information
+add_executable(oggdump
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_demuxer.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_demuxer.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_pub.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_pub.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/opus_header.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/opus_header.hpp
+            ${PROJECT_SOURCE_DIR}/src/tools/ogg_dump.cpp)
+IF (APPLE)
+target_link_libraries(oggdump pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(oggdump pthread rt dl z m)
+ENDIF ()
+
+################################################################
+## example: ts2ogg
+## read a ts file --> mpegtsdemux streamer --> ogg muxer --> write a flv file
+add_executable(ts2ogg_streamer
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_muxer.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_muxer.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_pub.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_pub.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/opus_header.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/opus_header.hpp
+            ${PROJECT_SOURCE_DIR}/src/utils/byte_crypto.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/mpegts2ogg.cpp
+            ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp)
+IF (APPLE)
+target_link_libraries(ts2ogg_streamer pthread dl z m ssl crypto)
+ELSEIF (UNIX)
+target_link_libraries(ts2ogg_streamer pthread rt dl z m ssl crypto)
+ENDIF ()

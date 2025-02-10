@@ -34,7 +34,7 @@ HttpSession::HttpSession(uv_loop_t* loop, uv_stream_t* handle, HttpCallbackI* ca
                                                                                                           , logger_(logger)
 {
     request_ = new HttpRequest(this);
-    session_ptr_ = std::make_shared<TcpSession>(loop, handle, this);
+    session_ptr_ = std::make_shared<TcpSession>(loop, handle, this, logger);
     remote_address_ = session_ptr_->GetRemoteEndpoint();
 
     TryRead();
@@ -45,7 +45,7 @@ HttpSession::HttpSession(uv_loop_t* loop, uv_stream_t* handle, HttpCallbackI* ca
                                                                                              , logger_(logger)
 {
     request_ = new HttpRequest(this);
-    session_ptr_ = std::make_shared<TcpSession>(loop, handle, this, key_file, cert_file);
+    session_ptr_ = std::make_shared<TcpSession>(loop, handle, this, key_file, cert_file, logger);
     remote_address_ = session_ptr_->GetRemoteEndpoint();
 
     TryRead();

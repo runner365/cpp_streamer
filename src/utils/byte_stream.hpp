@@ -39,6 +39,21 @@ public:
 
         return value;
     }
+    static uint64_t Read8BytesLe(const uint8_t* data) {
+        uint64_t value = 0;
+        uint8_t* output = (uint8_t*)&value;
+
+        output[0] = *data++;
+        output[1] = *data++;
+        output[2] = *data++;
+        output[3] = *data++;
+        output[4] = *data++;
+        output[5] = *data++;
+        output[6] = *data++;
+        output[7] = *data++;
+
+        return value;
+    }
     static uint32_t Read4Bytes(const uint8_t* data) {
         uint32_t value = 0;
         uint8_t* output = (uint8_t*)&value;
@@ -47,6 +62,17 @@ public:
         output[2] = *data++;
         output[1] = *data++;
         output[0] = *data++;
+
+        return value;
+    }
+    static uint32_t Read4BytesLe(const uint8_t* data) {
+        uint32_t value = 0;
+        uint8_t* output = (uint8_t*)&value;
+
+        output[0] = *data++;
+        output[1] = *data++;
+        output[2] = *data++;
+        output[3] = *data++;
 
         return value;
     }
@@ -60,6 +86,16 @@ public:
 
         return value;
     }
+    static uint32_t Read3BytesLe(const uint8_t* data) {
+        uint32_t value = 0;
+        uint8_t* output = (uint8_t*)&value;
+
+        output[0] = *data++;
+        output[1] = *data++;
+        output[2] = *data++;
+
+        return value;
+    }
     static uint16_t Read2Bytes(const uint8_t* data) {
         uint16_t value = 0;
         uint8_t* output = (uint8_t*)&value;
@@ -69,7 +105,15 @@ public:
 
         return value;
     }
-    
+    static uint16_t Read2BytesLe(const uint8_t* data) {
+        uint16_t value = 0;
+        uint8_t* output = (uint8_t*)&value;
+
+        output[0] = *data++;
+        output[1] = *data++;
+
+        return value;
+    }
     static void Write8Bytes(uint8_t* data, uint64_t value) {
         uint8_t* p = data;
         uint8_t* pp = (uint8_t*)&value;
@@ -82,6 +126,19 @@ public:
         *p++ = pp[2];
         *p++ = pp[1];
         *p++ = pp[0];
+    }
+    static void Write8Bytes_le(uint8_t* data, uint64_t value) {
+        uint8_t* p = data;
+        uint8_t* pp = (uint8_t*)&value;
+
+        *p++ = pp[0];
+        *p++ = pp[1];
+        *p++ = pp[2];
+        *p++ = pp[3];
+        *p++ = pp[4];
+        *p++ = pp[5];
+        *p++ = pp[6];
+        *p++ = pp[7];
     }
     static void Write4Bytes(uint8_t* data, uint32_t value) {
         uint8_t* p = data;

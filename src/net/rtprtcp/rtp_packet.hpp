@@ -64,32 +64,32 @@ public:
     ~RtpPacket();
 
 public:
-    uint8_t Version() {return this->header->version;}
-    bool HasPadding() {return (this->header->padding == 1) ? true : false;}
-    void SetPadding(bool flag) {this->header->padding = flag ? 1 : 0;}
-    bool HasExtension() {return (this->header->extension == 1) ? true : false;}
-    uint8_t CsrcCount() {return this->header->csrc_count;}
-    uint8_t GetPayloadType() {return this->header->payload_type;}
-    void SetPayloadType(uint8_t type) {this->header->payload_type = type;}
+    uint8_t Version() {return header_->version;}
+    bool HasPadding() {return (header_->padding == 1) ? true : false;}
+    void SetPadding(bool flag) {header_->padding = flag ? 1 : 0;}
+    bool HasExtension() {return (header_->extension == 1) ? true : false;}
+    uint8_t CsrcCount() {return header_->csrc_count;}
+    uint8_t GetPayloadType() {return header_->payload_type;}
+    void SetPayloadType(uint8_t type) {header_->payload_type = type;}
     uint8_t GetMPayloadType() {
-        uint8_t marker = this->header->marker;
-        return (marker << 7) | this->header->payload_type;
+        uint8_t marker = header_->marker;
+        return (marker << 7) | header_->payload_type;
     }
-    uint8_t GetMarker() {return this->header->marker;}
-    void SetMarker(uint8_t marker) { this->header->marker = marker; }
-    uint16_t GetSeq() {return ntohs(this->header->sequence);}
-    void SetSeq(uint16_t seq) {this->header->sequence = htons(seq);}
-    uint32_t GetTimestamp() {return ntohl(this->header->timestamp);}
-    void SetTimestamp(uint32_t ts) { this->header->timestamp = (uint32_t)htonl(ts); }
-    uint32_t GetSsrc() {return ntohl(this->header->ssrc);}
-    void SetSsrc(uint32_t ssrc) {this->header->ssrc = (uint32_t)htonl(ssrc);}
+    uint8_t GetMarker() {return header_->marker;}
+    void SetMarker(uint8_t marker) { header_->marker = marker; }
+    uint16_t GetSeq() {return ntohs(header_->sequence);}
+    void SetSeq(uint16_t seq) {header_->sequence = htons(seq);}
+    uint32_t GetTimestamp() {return ntohl(header_->timestamp);}
+    void SetTimestamp(uint32_t ts) { header_->timestamp = (uint32_t)htonl(ts); }
+    uint32_t GetSsrc() {return ntohl(header_->ssrc);}
+    void SetSsrc(uint32_t ssrc) {header_->ssrc = (uint32_t)htonl(ssrc);}
 
-    uint8_t* GetData() {return (uint8_t*)this->header;}
-    size_t GetDataLength() {return data_len;}
+    uint8_t* GetData() {return (uint8_t*)header_;}
+    size_t GetDataLength() {return data_len_;}
 
-    uint8_t* GetPayload() {return this->payload;}
-    size_t GetPayloadLength() {return this->payload_len;}
-    void SetPayloadLength(size_t len) { this->payload_len = len; }
+    uint8_t* GetPayload() {return payload_;}
+    size_t GetPayloadLength() {return payload_len_;}
+    void SetPayloadLength(size_t len) { payload_len_ = len; }
 
     void SetMidExtensionId(uint8_t id) { mid_extension_id_ = id; }
     uint8_t GetMidExtensionId() { return mid_extension_id_; }
@@ -97,19 +97,25 @@ public:
     void SetAbsTimeExtensionId(uint8_t id) { abs_time_extension_id_ = id; }
     uint8_t GetAbsTimeExtensionId() { return abs_time_extension_id_; }
 
+    void SetTransportWideCcExtensionId(uint8_t id) { transport_wideCc_extension_id_ = id; }
+    uint8_t GetTransportWideCcExtensionId() { return transport_wideCc_extension_id_; }
+
     bool UpdateMid(uint8_t mid);
     bool ReadMid(uint8_t& mid);
 
     bool ReadAbsTime(uint32_t& abs_time_24bits);
     bool UpdateAbsTime(uint32_t abs_time_24bits);
 
-    void SetNeedDelete(bool flag) { this->need_delete = flag; }
-    bool GetNeedDelete() { return this->need_delete; }
-    void EnableDebug() { debug_enable = true; }
-    void DisableDebug() { debug_enable = false; }
-    bool IsDebug() { return debug_enable; }
+    bool GetTransportWideSeq(uint16_t& seq);
+    bool UpdateTransportWideSeq(uint16_t seq);
+
+    void SetNeedDelete(bool flag) { need_delete_ = flag; }
+    bool GetNeedDelete() { return need_delete_; }
+    void EnableDebug() { debug_enable_ = true; }
+    void DisableDebug() { debug_enable_ = false; }
+    bool IsDebug() { return debug_enable_; }
     
-    int64_t GetLocalMs() {return this->local_ms;}
+    int64_t GetLocalMs() {return local_ms_;}
 
     void RtxDemux(uint32_t ssrc, uint8_t payloadtype);
     void RtxMux(uint8_t payload_type, uint32_t ssrc, uint16_t seq);
@@ -136,19 +142,20 @@ private:
     bool UpdateExtensionLength(uint8_t id, uint8_t len);
 
 private:
-    RtpCommonHeader* header = nullptr;
-    HeaderExtension* ext     = nullptr;
-    uint8_t* payload          = nullptr;
-    size_t payload_len        = 0;
-    uint8_t pad_len           = 0;
-    size_t data_len           = 0;
-    int64_t local_ms          = 0;
-    bool need_delete          = false;
-    bool debug_enable         = false;
+    RtpCommonHeader* header_    = nullptr;
+    HeaderExtension* ext_       = nullptr;
+    uint8_t* payload_           = nullptr;
+    size_t payload_len_         = 0;
+    uint8_t pad_len_            = 0;
+    size_t data_len_            = 0;
+    int64_t local_ms_           = 0;
+    bool need_delete_           = false;
+    bool debug_enable_          = false;
 
 private:
-    uint8_t mid_extension_id_      = 0;
-    uint8_t abs_time_extension_id_ = 0;
+    uint8_t mid_extension_id_               = 0;
+    uint8_t abs_time_extension_id_          = 0;
+    uint8_t transport_wideCc_extension_id_  = 0;
 
 private:
     std::map<uint8_t, OnebyteExtension*>  onebyte_ext_map_;

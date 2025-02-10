@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <vector>
 #include <map>
+#include <sstream>
 
 namespace cpp_streamer
 {
@@ -34,6 +35,7 @@ static const uint8_t opus_default_extradata[30] = {
     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
+
 */
 
 /*
@@ -93,6 +95,7 @@ static const uint8_t opus_default_extradata[30] = {
  |   }                                           |           |       |
  |}                                              |           |       |
  */
+
 static uint8_t* GetOpusHeader(uint8_t* data, int len, int& ret_len) {
     int i = 0;
 
@@ -309,7 +312,25 @@ bool GetOpusFrameVector(uint8_t* data, int len, std::vector<std::pair<uint8_t*, 
     return true;
 }
 
-bool GetOpusExtraData(int clock_rate, int channel, uint8_t* extra_data, size_t& extra_len) {
+OpusExtraHandler::OpusExtraHandler()
+{
+}
+
+OpusExtraHandler::~OpusExtraHandler()
+{
+}
+
+bool OpusExtraHandler::IsExtraData(const uint8_t* data, size_t len) {
+    const char opus_str[] = "OpusHead";
+
+    if (len <= sizeof(opus_str)) {
+        return false;
+    }
+
+    return memcmp(opus_str, data, sizeof(opus_str) - 1) == 0 ? true : false;
+}
+
+bool OpusExtraHandler::GenOpusExtraData(int clock_rate, int channel, uint8_t* extra_data, size_t& extra_len) {
     uint8_t* p = extra_data;
     const char opus_str[] = "OpusHead";
     const size_t opus_str_len = 8;
@@ -317,7 +338,7 @@ bool GetOpusExtraData(int clock_rate, int channel, uint8_t* extra_data, size_t& 
     memcpy(p, (uint8_t*)opus_str, opus_str_len);
     p += opus_str_len;
 
-    *p = 1;
+    *p = 1;//version
     p++;
     *p = (uint8_t)channel;
     p++;
@@ -349,6 +370,45 @@ bool GetOpusExtraData(int clock_rate, int channel, uint8_t* extra_data, size_t& 
        extra_len = extra_data[18] ? 21 + channel : 19;
     return true;
        */
+}
+
+int OpusExtraHandler::DemuxExtraData(const uint8_t* data, size_t len) {
+    bool ret = IsExtraData(data, len);
+
+    if (!ret) {
+        return -1;
+    }
+
+    version_ = data[8];
+    channel_ = data[9];
+    delay_ = ByteStream::Read2BytesLe(data + 10);
+    samperate_ = ByteStream::Read4BytesLe(data + 12);
+    gain_ = ByteStream::Read2BytesLe(data + 16);
+    map_type_ = data[18];
+
+    extra_data_.resize(len);
+    memcpy(&extra_data_[0], data, len);
+    return 0;
+}
+
+std::string OpusExtraHandler::DumpExtraData() {
+    std::stringstream ss;
+    char data_sz[1024];
+    size_t len = 0;
+
+    for (auto item : extra_data_) {
+        len += snprintf(data_sz + len, sizeof(data_sz) - len, "%02x ", item);
+    }
+    ss << "{";
+    ss << "\"ver\":" << (int)version_ << ",";
+    ss << "\"channel\":" << (int)channel_ << ",";
+    ss << "\"delay\":" << delay_ << ",";
+    ss << "\"samperate\":" << samperate_ << ",";
+    ss << "\"gain\":" << gain_ << ",";
+    ss << "\"map_type\":" << (int)map_type_ << ",";
+    ss << "\"raw_data\":" << "\"" << std::string(data_sz) << "\"";
+    ss << "}";
+    return ss.str();
 }
 
 }

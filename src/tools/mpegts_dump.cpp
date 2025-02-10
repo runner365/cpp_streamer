@@ -17,7 +17,6 @@ using namespace cpp_streamer;
 
 static Logger* s_logger = nullptr;
 
-
 class MpegTsDump : public CppStreamerInterface, public StreamerReport
 {
 public:

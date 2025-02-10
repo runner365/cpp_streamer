@@ -38,6 +38,7 @@ include_directories(${CMAKE_BINARY_DIR}/output/include
                     src/format/mpegts
                     src/format/amf
                     src/format/sdp
+                    src/format/ogg
                     src/net
                     src/net/rtprtcp
                     src/net/http

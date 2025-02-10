@@ -65,23 +65,23 @@ RtpPacket::RtpPacket(RtpCommonHeader* header, HeaderExtension* ext,
     if (data_len > RTP_PACKET_MAX_SIZE) {
         CSM_THROW_ERROR("rtp len(%lu) is to large", data_len);
     }
-    this->header      = header;
-    this->ext         = ext;
-    this->payload     = payload;
-    this->payload_len = payload_len;
-    this->pad_len     = pad_len;
+    header_      = header;
+    ext_         = ext;
+    payload_     = payload;
+    payload_len_ = payload_len;
+    pad_len_     = pad_len;
 
-    this->data_len    = data_len;
+    data_len_    = data_len;
 
-    this->local_ms    = (int64_t)now_millisec();
+    local_ms_    = (int64_t)now_millisec();
 
-    this->ParseExt();
-    this->need_delete = false;
+    ParseExt();
+    need_delete_ = false;
 }
 
 RtpPacket::~RtpPacket() {
-    uint8_t* data = (uint8_t*)this->header;
-    if (this->need_delete && data) {
+    uint8_t* data = (uint8_t*)header_;
+    if (need_delete_ && data) {
         delete[] data;
     }
 }
@@ -95,19 +95,19 @@ RtpPacket* RtpPacket::Clone(uint8_t* buffer) {
         new_data = new uint8_t[RTP_PACKET_MAX_SIZE];
     }
     
-    assert(this->GetDataLength() < RTP_PACKET_MAX_SIZE);
-    memcpy(new_data, this->GetData(), this->GetDataLength());
+    assert(GetDataLength() < RTP_PACKET_MAX_SIZE);
+    memcpy(new_data, GetData(), GetDataLength());
 
-    RtpPacket* new_pkt = RtpPacket::Parse(new_data, this->GetDataLength());
+    RtpPacket* new_pkt = RtpPacket::Parse(new_data, GetDataLength());
 
     if (buffer) {
-        new_pkt->need_delete = false;
+        new_pkt->need_delete_ = false;
     } else {
-        new_pkt->need_delete = true;
+        new_pkt->need_delete_ = true;
     }
     
-    new_pkt->mid_extension_id_ = this->mid_extension_id_;
-    new_pkt->abs_time_extension_id_ = this->abs_time_extension_id_;
+    new_pkt->mid_extension_id_ = mid_extension_id_;
+    new_pkt->abs_time_extension_id_ = abs_time_extension_id_;
 
     return new_pkt;
 }
@@ -116,27 +116,27 @@ std::string RtpPacket::Dump() {
     std::stringstream ss;
     char desc[128];
 
-    snprintf(desc, sizeof(desc), "%p", this->GetData());
+    snprintf(desc, sizeof(desc), "%p", GetData());
 
-    ss << "rtp packet data:" << desc << ", data length:" << this->data_len << "\r\n";
-    ss << "  version:" << (int)this->Version() << ", padding:" << this->HasPadding();
-    ss << ", extension:" << this->HasExtension() << ", csrc count:" << (int)this->CsrcCount() << "\r\n";
-    ss << "  marker:" << (int)this->GetMarker() << ", payload type:" << (int)this->GetPayloadType() << "\r\n";
-    ss << "  sequence:" << (int)this->GetSeq() << ", timestamp:" << this->GetTimestamp();
-    ss << ", ssrc:" << this->GetSsrc() << "\r\n";
+    ss << "rtp packet data:" << desc << ", data length:" << data_len_ << "\r\n";
+    ss << "  version:" << (int)Version() << ", padding:" << HasPadding();
+    ss << ", extension:" << HasExtension() << ", csrc count:" << (int)CsrcCount() << "\r\n";
+    ss << "  marker:" << (int)GetMarker() << ", payload type:" << (int)GetPayloadType() << "\r\n";
+    ss << "  sequence:" << (int)GetSeq() << ", timestamp:" << GetTimestamp();
+    ss << ", ssrc:" << GetSsrc() << "\r\n";
 
-    snprintf(desc, sizeof(desc), "%p", this->GetPayload());
-    ss << "  payload:" << desc << ", payload length:" << this->GetPayloadLength() << "\r\n";
+    snprintf(desc, sizeof(desc), "%p", GetPayload());
+    ss << "  payload:" << desc << ", payload length:" << GetPayloadLength() << "\r\n";
 
-    if (this->HasPadding()) {
-        uint8_t* media_data = this->GetData();
-        ss << "  padding len:" << media_data[this->data_len - 1] << "\r\n";
+    if (HasPadding()) {
+        uint8_t* media_data = GetData();
+        ss << "  padding len:" << media_data[data_len_ - 1] << "\r\n";
     }
 
-    if (this->HasExtension()) {
-        if (!this->onebyte_ext_map_.empty()) {
+    if (HasExtension()) {
+        if (!onebyte_ext_map_.empty()) {
             ss <<  "  rtp onebyte extension:" << "\r\n";
-            for (auto item : this->onebyte_ext_map_) {
+            for (auto item : onebyte_ext_map_) {
                 OnebyteExtension* item_ext = item.second;
                 ss << "    id:" << (int)item.first << ", length:" << (int)(item_ext->len) << "\r\n";
                 if (item.first == mid_extension_id_) {
@@ -150,9 +150,9 @@ std::string RtpPacket::Dump() {
             }
         }
 
-        if (!this->twobytes_ext_map_.empty()) {
+        if (!twobytes_ext_map_.empty()) {
             ss << "  rtp twobytes extension:" << "\r\n";
-            for ( auto item : this->twobytes_ext_map_) {
+            for ( auto item : twobytes_ext_map_) {
                 TwobytesExtension* item_ext = item.second;
                 ss << "    id:" << (int)item.first << ", length:" << (int)item_ext->len << "\r\n";
                 if (item.first == mid_extension_id_) {
@@ -190,25 +190,25 @@ uint8_t* RtpPacket::GetExtValue(HeaderExtension* rtp_ext) {
 }
 
 void RtpPacket::ParseExt() {
-    if ((this->header->extension == 0) || (this->ext == nullptr)) {
+    if ((header_->extension == 0) || (ext_ == nullptr)) {
         return;
     }
 
     //base on rfc5285
-    if (HasOnebyteExt(this->ext)) {
+    if (HasOnebyteExt(ext_)) {
         ParseOnebyteExt();
-    } else if (HasTwobytesExt(this->ext)) {
+    } else if (HasTwobytesExt(ext_)) {
         ParseTwobytesExt();
     } else {
-        CSM_THROW_ERROR("the rtp extension id(%02x) error", this->ext->id);
+        CSM_THROW_ERROR("the rtp extension id(%02x) error", ext_->id);
     }
 }
 
 void RtpPacket::ParseOnebyteExt() {
     onebyte_ext_map_.clear();
 
-    uint8_t* ext_start = (uint8_t*)(this->ext) + 4;//skip id(16bits) + length(16bits)
-    uint8_t* ext_end   = ext_start + GetExtLength(this->ext);
+    uint8_t* ext_start = (uint8_t*)(ext_) + 4;//skip id(16bits) + length(16bits)
+    uint8_t* ext_end   = ext_start + GetExtLength(ext_);
     uint8_t* p = ext_start;
 
 /*
@@ -234,7 +234,7 @@ void RtpPacket::ParseOnebyteExt() {
         if (id != 0) {
             if (p + 1 + len > ext_end) {
                 CSM_THROW_ERROR("rtp extension length(%d) is not enough in one byte extension mode.",
-                    GetExtLength(this->ext));
+                    GetExtLength(ext_));
                 break;
             }
 
@@ -255,8 +255,8 @@ void RtpPacket::ParseOnebyteExt() {
 void RtpPacket::ParseTwobytesExt() {
     twobytes_ext_map_.clear();
 
-    uint8_t* ext_start = (uint8_t*)(this->ext) + 4;//skip id(16bits) + length(16bits)
-    uint8_t* ext_end   = ext_start + GetExtLength(this->ext);
+    uint8_t* ext_start = (uint8_t*)(ext_) + 4;//skip id(16bits) + length(16bits)
+    uint8_t* ext_end   = ext_start + GetExtLength(ext_);
     uint8_t* p         = ext_start;
 
 /*
@@ -282,7 +282,7 @@ void RtpPacket::ParseTwobytesExt() {
         if (id != 0) {
             if (p + 2 + len > ext_end) {
                 CSM_THROW_ERROR("rtp extension length(%d) is not enough in two bytes extension mode.",
-                    GetExtLength(this->ext));
+                    GetExtLength(ext_));
                 break;
             }
 
@@ -316,7 +316,7 @@ bool RtpPacket::HasTwobytesExt(HeaderExtension* rtp_ext) {
 }
 
 uint8_t* RtpPacket::GetExtension(uint8_t id, uint8_t& len) {
-    if (HasOnebyteExt(this->ext)) {
+    if (HasOnebyteExt(ext_)) {
         auto iter = onebyte_ext_map_.find(id);
         if (iter == onebyte_ext_map_.end()) {
             return nullptr;
@@ -325,7 +325,7 @@ uint8_t* RtpPacket::GetExtension(uint8_t id, uint8_t& len) {
         OnebyteExtension* ext_data = iter->second;
         len = ext_data->len + 1;
         return ext_data->value;
-    } else if (HasTwobytesExt(this->ext)) {
+    } else if (HasTwobytesExt(ext_)) {
         auto iter = twobytes_ext_map_.find(id);
         if (iter == twobytes_ext_map_.end()) {
             return nullptr;
@@ -344,10 +344,10 @@ uint8_t* RtpPacket::GetExtension(uint8_t id, uint8_t& len) {
 
 bool RtpPacket::UpdateMid(uint8_t mid) {
     uint8_t extern_len = 0;
-    uint8_t* extern_value = GetExtension(this->mid_extension_id_, extern_len);
+    uint8_t* extern_value = GetExtension(mid_extension_id_, extern_len);
 
     if (extern_value == nullptr) {
-        LogErrorf(logger_, "The rtp packet has not extern mid:%d", this->mid_extension_id_);
+        LogErrorf(logger_, "The rtp packet has not extern mid:%d", mid_extension_id_);
         return false;
     }
 
@@ -361,10 +361,10 @@ bool RtpPacket::UpdateMid(uint8_t mid) {
 
 bool RtpPacket::ReadMid(uint8_t& mid) {
     uint8_t extern_len = 0;
-    uint8_t* extern_value = GetExtension(this->mid_extension_id_, extern_len);
+    uint8_t* extern_value = GetExtension(mid_extension_id_, extern_len);
 
     if (extern_value == nullptr) {
-        LogErrorf(logger_, "The rtp packet has not extern mid:%d", this->mid_extension_id_);
+        LogErrorf(logger_, "The rtp packet has not extern mid:%d", mid_extension_id_);
         return false;
     }
     std::string mid_str((char*)extern_value, extern_len);
@@ -373,12 +373,47 @@ bool RtpPacket::ReadMid(uint8_t& mid) {
     return true;
 }
 
-bool RtpPacket::ReadAbsTime(uint32_t& abs_time_24bits) {
+bool RtpPacket::UpdateTransportWideSeq(uint16_t seq) {
     uint8_t extern_len = 0;
-    uint8_t* extern_value = GetExtension(this->abs_time_extension_id_, extern_len);
+    uint8_t* extern_value = GetExtension(transport_wideCc_extension_id_, extern_len);
 
     if (extern_value == nullptr) {
-        //LogErrorf(logger_, "The rtp packet has not extern abs time id:%d", this->abs_time_extension_id_);
+        LogErrorf(logger_, "The rtp packet has not extern transport wideCc id:%d", transport_wideCc_extension_id_);
+        return false;
+    }
+
+    if (extern_len != 2) {
+        LogWarnf(logger_, "update extern transport wideCc length is not 2, extern_len:%d", extern_len);
+    }
+    ByteStream::Write2Bytes(extern_value, seq);
+
+    //update extension length
+    return UpdateExtensionLength(transport_wideCc_extension_id_, 3);
+}
+
+bool RtpPacket::GetTransportWideSeq(uint16_t& seq) {
+    uint8_t extern_len = 0;
+    uint8_t* extern_value = GetExtension(transport_wideCc_extension_id_, extern_len);
+
+    if (extern_value == nullptr) {
+        //LogErrorf(logger_, "The rtp packet has not extern transport wideCc id:%d", transport_wideCc_extension_id_);
+        return false;
+    }
+
+    if (extern_len != 2) {
+        LogWarnf(logger_, "read transport wideCc length is not 2, extern_len:%d", extern_len);
+    }
+    seq = ByteStream::Read2Bytes(extern_value);
+
+    return true;
+}
+
+bool RtpPacket::ReadAbsTime(uint32_t& abs_time_24bits) {
+    uint8_t extern_len = 0;
+    uint8_t* extern_value = GetExtension(abs_time_extension_id_, extern_len);
+
+    if (extern_value == nullptr) {
+        //LogErrorf(logger_, "The rtp packet has not extern abs time id:%d", abs_time_extension_id_);
         return false;
     }
 
@@ -392,10 +427,10 @@ bool RtpPacket::ReadAbsTime(uint32_t& abs_time_24bits) {
 
 bool RtpPacket::UpdateAbsTime(uint32_t abs_time_24bits) {
     uint8_t extern_len = 0;
-    uint8_t* extern_value = GetExtension(this->abs_time_extension_id_, extern_len);
+    uint8_t* extern_value = GetExtension(abs_time_extension_id_, extern_len);
 
     if (extern_value == nullptr) {
-        LogErrorf(logger_, "The rtp packet has not extern abs time id:%d", this->abs_time_extension_id_);
+        LogErrorf(logger_, "The rtp packet has not extern abs time id:%d", abs_time_extension_id_);
         return false;
     }
 
@@ -413,9 +448,9 @@ bool RtpPacket::UpdateExtensionLength(uint8_t id, uint8_t len) {
         LogErrorf(logger_, "update extension length error: len must not be zero.");
         return false;
     }
-    if (HasOnebyteExt(this->ext)) {
-        auto iter = this->onebyte_ext_map_.find(id);
-        if (iter == this->onebyte_ext_map_.end()) {
+    if (HasOnebyteExt(ext_)) {
+        auto iter = onebyte_ext_map_.find(id);
+        if (iter == onebyte_ext_map_.end()) {
             LogErrorf(logger_, "fail to get id:%d from the onebyte ext map.", id);
             return false;
         }
@@ -425,9 +460,9 @@ bool RtpPacket::UpdateExtensionLength(uint8_t id, uint8_t len) {
             memset(extension->value + len, 0, current_len - len);
         }
         extension->len = len - 1;
-    } else if (HasTwobytesExt(this->ext)) {
-        auto iter = this->twobytes_ext_map_.find(id);
-        if (iter == this->twobytes_ext_map_.end()) {
+    } else if (HasTwobytesExt(ext_)) {
+        auto iter = twobytes_ext_map_.find(id);
+        if (iter == twobytes_ext_map_.end()) {
             LogErrorf(logger_, "fail to get id:%d from the twobytes ext map.", id);
             return false;
         }
@@ -445,23 +480,23 @@ bool RtpPacket::UpdateExtensionLength(uint8_t id, uint8_t len) {
 }
 
 void RtpPacket::RtxDemux(uint32_t ssrc, uint8_t payloadtype) {
-    if (this->payload_len < 2) {
-        CSM_THROW_ERROR("rtx payload len(%lu) is less than 2", this->payload_len);
+    if (payload_len_ < 2) {
+        CSM_THROW_ERROR("rtx payload len(%lu) is less than 2", payload_len_);
     }
 
-    uint16_t replace_seq = ntohs(*(uint16_t*)(this->payload));
+    uint16_t replace_seq = ntohs(*(uint16_t*)(payload_));
     SetPayloadType(payloadtype);
     SetSeq(replace_seq);
     SetSsrc(ssrc);
 
-    std::memmove(this->payload, this->payload + 2, this->payload_len - 2);
-    this->payload_len -= 2;
-    this->data_len    -= 2;
+    std::memmove(payload_, payload_ + 2, payload_len_ - 2);
+    payload_len_ -= 2;
+    data_len_    -= 2;
 
-    if (this->HasPadding()) {
+    if (HasPadding()) {
         SetPadding(false);
-        this->data_len -= this->pad_len;
-        this->pad_len   = 0;
+        data_len_ -= pad_len_;
+        pad_len_   = 0;
     }
 }
 
@@ -469,21 +504,21 @@ void RtpPacket::RtxMux(uint8_t payload_type, uint32_t ssrc, uint16_t seq) {
     SetPayloadType(payload_type);
     SetSsrc(ssrc);
     
-    std::memmove(this->payload + 2, this->payload, this->payload_len);
-    ByteStream::Write2Bytes(this->payload, GetSeq());
+    std::memmove(payload_ + 2, payload_, payload_len_);
+    ByteStream::Write2Bytes(payload_, GetSeq());
 
     SetSeq(seq);
 
-    this->payload_len += 2u;
-    this->data_len += 2u;
+    payload_len_ += 2u;
+    data_len_ += 2u;
 
     //remove padding 
-    if (this->HasPadding())
+    if (HasPadding())
     {
         SetPadding(false);
 
-        this->data_len -= this->pad_len;
-        this->pad_len = 0;
+        data_len_ -= pad_len_;
+        pad_len_ = 0;
     }
 }
 }
