@@ -10,18 +10,40 @@
 #include <vector>
 #include <memory>
 
+using json = nlohmann::json;
+
 namespace cpp_streamer
 {
-typedef struct PAGE_HEADER_S {  
+#define OGG_ITEM_MAX 255
+#define OGG_PAGE_HEADER_SIZE 27
+#define OGG_PAGE_HEADER_CRC_OFFSET 22
+
+#define OGG_NULL_HEADER_TYPE        0x00
+#define OGG_CONTINUE_HEADER_TYPE    0x01
+#define OGG_FIRST_HEADER_TYPE       0x02
+#define OGG_LAST_HEADER_TYPE        0x04
+
+class OGG_PAGE_HEADER
+{
+public:
+	OGG_PAGE_HEADER();
+	~OGG_PAGE_HEADER();
+
+public:
+	static OGG_PAGE_HEADER* Parse(const uint8_t* data, size_t len);
+	void Sererialize(uint8_t* data, size_t& len);
+	json Dump();
+
+public:
 	char    Oggs[4];        
 	uint8_t ver;
 	uint8_t header_type_flag;
-	uint8_t granule_position[8];
-	uint8_t stream_serial_num[4];
-	uint8_t page_sequence_number[4];
-	uint8_t CRC_checksum[4];
+	uint64_t granule_position;
+	uint32_t stream_serial_num;
+	uint32_t page_sequence_number;
+	uint32_t CRC_checksum;
 	uint8_t seg_num;
-} OGG_PAGE_HEADER;
+};
 
 class OggPage
 {
@@ -32,12 +54,10 @@ public:
     std::string Dump();
 
 public:
-    OGG_PAGE_HEADER header_;
-    std::vector<uint8_t> seg_size_vec_;
+    OGG_PAGE_HEADER* header_ = nullptr;
+	std::vector<uint8_t> segs_size_;
     std::vector<std::shared_ptr<DataBuffer>> seg_buffer_vec_;
 };
-
-std::string DumpOggPacketHeader(const OGG_PAGE_HEADER& header);
 
 class OpusDataCallbackI
 {

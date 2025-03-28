@@ -95,6 +95,14 @@ uint32_t ByteCrypto::GetCrc32(const uint8_t* data, size_t size) {
     return crc ^ ~0U;
 }
 
+uint32_t ByteCrypto::GetCrc32(uint32_t crc, const uint8_t* data, size_t size) {
+    const uint8_t *end = data + size;
+    while (data < end) {
+        crc = ByteCrypto::crc32_table[((uint8_t) crc) ^ *data++] ^ (crc >> 8);
+    }
+    return crc;
+}
+
 uint8_t* ByteCrypto::GetHmacSha1(const std::string& key, const uint8_t* data, size_t len) {
     int ret = 0;
 

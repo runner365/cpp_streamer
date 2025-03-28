@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string>
-#include <cstring>
+// #include <cstring>
 
 namespace cpp_streamer
 {

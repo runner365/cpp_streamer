@@ -345,11 +345,12 @@ add_executable(ts2ogg_streamer
             ${PROJECT_SOURCE_DIR}/src/format/ogg/ogg_pub.cpp
             ${PROJECT_SOURCE_DIR}/src/format/opus_header.cpp
             ${PROJECT_SOURCE_DIR}/src/format/opus_header.hpp
-            ${PROJECT_SOURCE_DIR}/src/utils/byte_crypto.cpp
+            ${PROJECT_SOURCE_DIR}/src/utils/crc.cpp
+            ${PROJECT_SOURCE_DIR}/src/utils/crc.hpp
             ${PROJECT_SOURCE_DIR}/src/tools/mpegts2ogg.cpp
             ${PROJECT_SOURCE_DIR}/src/cpp_streamer_factory.cpp)
 IF (APPLE)
-target_link_libraries(ts2ogg_streamer pthread dl z m ssl crypto)
+target_link_libraries(ts2ogg_streamer pthread dl z m)
 ELSEIF (UNIX)
-target_link_libraries(ts2ogg_streamer pthread rt dl z m ssl crypto)
+target_link_libraries(ts2ogg_streamer pthread rt dl z m)
 ENDIF ()

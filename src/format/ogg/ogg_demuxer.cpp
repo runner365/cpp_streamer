@@ -21,35 +21,40 @@ OggDemuxer::~OggDemuxer()
 
 
 int OggDemuxer::Demux() {
-    std::vector<uint8_t> header_buffer(sizeof(OGG_PAGE_HEADER));
+    std::vector<uint8_t> header_buffer(OGG_PAGE_HEADER_SIZE);
     uint8_t* p = nullptr;
+    size_t page_index = 0;
 
     while (true) {
         p = &header_buffer[0];
-        int n = io_reader_->IoRead(p, sizeof(OGG_PAGE_HEADER));
-        if (n < sizeof(OGG_PAGE_HEADER)) {
+        int n = io_reader_->IoRead(p, OGG_PAGE_HEADER_SIZE);
+        if (n < OGG_PAGE_HEADER_SIZE) {
             LogInfof(logger_, "ogg read eof.");
             break;
         }
         std::shared_ptr<OggPage> page_ptr = std::make_shared<OggPage>();
 
-        memcpy(&page_ptr->header_, p, sizeof(OGG_PAGE_HEADER));
-        LogInfoData(logger_, p, sizeof(OGG_PAGE_HEADER), "ogg page");
-        LogInfof(logger_, "page header dump:%s", page_ptr->Dump().c_str());
-        LogInfof(logger_, "page seg num:%d", page_ptr->header_.seg_num);
+        page_ptr->header_ = OGG_PAGE_HEADER::Parse(p, OGG_PAGE_HEADER_SIZE);
+        if (page_ptr->header_ == nullptr) {
+            LogErrorf(logger_, "parse ogg header error");
+            break;
+        }
 
-        std::vector<uint8_t> seg_num_array(page_ptr->header_.seg_num);
-        p = &seg_num_array[0];
-        n = io_reader_->IoRead(p, page_ptr->header_.seg_num);
-        if (n < page_ptr->header_.seg_num) {
+        //read segment lens
+        page_ptr->segs_size_.resize(page_ptr->header_->seg_num);
+        p = &page_ptr->segs_size_[0];
+        n = io_reader_->IoRead(p, page_ptr->header_->seg_num);
+        if (n < page_ptr->header_->seg_num) {
             LogInfof(logger_, "ogg read segment number eof.");
             break;
         }
-        page_ptr->seg_size_vec_ = std::move(seg_num_array);
+        page_index++;
+        LogInfof(logger_, "ogg page:%d, dump:%s", page_index, page_ptr->Dump().c_str());
 
+        //read segments data
         bool err = false;
-        for (size_t i = 0; i < page_ptr->seg_size_vec_.size(); i++) {
-            int len = page_ptr->seg_size_vec_[i];
+        for (size_t i = 0; i < page_ptr->segs_size_.size(); i++) {
+            int len = page_ptr->segs_size_[i];
             std::vector<uint8_t> temp_buffer(len);
             uint8_t* temp_data = &temp_buffer[0];
 

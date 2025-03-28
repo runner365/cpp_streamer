@@ -65,7 +65,7 @@ public:
     virtual void OnReport(const std::string& name,
             const std::string& type,
             const std::string& value) override {
-        LogWarnf(logger_, "report name:%s, type:%s, value:%s",
+        LogDebugf(logger_, "report name:%s, type:%s, value:%s",
                 name.c_str(), type.c_str(), value.c_str());
     }
 
@@ -84,9 +84,9 @@ public:
     }
     virtual int SourceData(Media_Packet_Ptr pkt_ptr) override {
         if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {
-            LogInfof(logger_, "audio data, dts:%ld, channel:%d, sample_rate:%d",
-                    pkt_ptr->dts_, pkt_ptr->channel_, pkt_ptr->sample_rate_);
-            LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen(), "audio data");
+            // LogInfof(logger_, "audio data, dts:%ld, channel:%d, sample_rate:%d",
+            //         pkt_ptr->dts_, pkt_ptr->channel_, pkt_ptr->sample_rate_);
+            // LogInfoData(logger_, (uint8_t*)pkt_ptr->buffer_ptr_->Data(), pkt_ptr->buffer_ptr_->DataLen(), "audio data");
             ogg_muxer_.InputPacket((uint8_t*)pkt_ptr->buffer_ptr_->Data(),
                                 pkt_ptr->buffer_ptr_->DataLen(),
                                 pkt_ptr->dts_, 
@@ -107,7 +107,7 @@ public:
 
 protected:
     virtual void OnOggPacketCallback(const uint8_t* data, size_t len, int64_t dts) override {
-        LogInfoData(logger_, data, len, "ogg data");
+        LogInfof(logger_, "ogg packet len:%lu, dts:%ld", len, dts);
         FILE* file_p = fopen(filename_.c_str(), "ab+");
         if (file_p) {
             fwrite(data, 1, len, file_p);

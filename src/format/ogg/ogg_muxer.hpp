@@ -7,14 +7,30 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string>
+#include <vector>
+#include <memory>
 
 namespace cpp_streamer
 {
 
-#define OGG_NULL_HEADER_TYPE        0x00
-#define OGG_CONTINUE_HEADER_TYPE    0x01
-#define OGG_FIRST_HEADER_TYPE       0x02
-#define OGG_LAST_HEADER_TYPE        0x04
+class OggItem
+{
+public:
+    std::vector<uint8_t> data;
+    int64_t dts;
+    int channel;
+    int sample_rate;
+
+public:
+    OggItem(const uint8_t* data, size_t len, int64_t dts, int channel, int sample_rate)
+    {
+        this->data.resize(len);
+        memcpy(&this->data[0], data, len);
+        this->dts = dts;
+        this->channel = channel;
+        this->sample_rate = sample_rate;
+    }
+};
 
 class OggMuxer
 {
@@ -23,20 +39,22 @@ private:
     Logger* logger_         = nullptr;
 
 private:
-    bool first_pkt_         = true;
-    uint32_t pg_seq_num_    = 0;
+    bool first_pkt_          = true;
+    uint32_t pg_seq_num_     = 0;
+    size_t granule_position_ = 0;
+    uint32_t stream_serial_num_ = 0;
+    std::vector<std::shared_ptr<OggItem>> ogg_items_;
 
 public:
     OggMuxer(OggPacketCallbackI* cb, Logger* logger);
     ~OggMuxer();
 
 public:
-    static uint32_t GetOggsUint32();
     int InputPacket(const uint8_t* data, size_t len, int64_t dts, int channel, int sample_rate);
 
 private:
-    void GenPageHeader(uint8_t header_type_flag, int channel, int sample_rate, uint32_t seq, OGG_PAGE_HEADER& pg_header);
     int GenExtraData(int64_t dts, int channel, int sample_rate);
+    void MakeOpusConst(int64_t dts);
 };
 
 }

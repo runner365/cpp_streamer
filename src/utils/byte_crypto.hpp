@@ -18,6 +18,7 @@ public:
     static void DeInit();
     static uint32_t GetRandomUint(uint32_t min, uint32_t max);
     static uint32_t GetCrc32(const uint8_t* data, size_t size);
+    static uint32_t GetCrc32(uint32_t crc, const uint8_t* data, size_t size);
     static uint8_t* GetHmacSha1(const std::string& key, const uint8_t* data, size_t len);
     static std::string GetRandomString(size_t len);
 
