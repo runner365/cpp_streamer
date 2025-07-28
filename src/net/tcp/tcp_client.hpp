@@ -117,11 +117,11 @@ public:
             if(getaddrinfo(host.c_str(), port_sz, (const addrinfo*)&hints, &ai)) {
                 throw CppStreamException("get address info error");
             }
-            freeaddrinfo(ai);
             assert(sizeof(dst_addr_) == ai->ai_addrlen);
 
             memcpy((void*)&dst_addr_, ai->ai_addr, sizeof(dst_addr_));
             dst_ip = GetIpStr(ai->ai_addr, dst_port);
+            freeaddrinfo(ai);
         } else {
             GetIpv4Sockaddr(host, htons(dst_port), (struct sockaddr*)&dst_addr_);
             dst_ip = GetIpStr((sockaddr*)&dst_addr_, dst_port);
