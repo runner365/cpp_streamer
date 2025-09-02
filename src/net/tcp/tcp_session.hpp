@@ -316,7 +316,9 @@ inline static void OnUvWrite(uv_write_t* req, int status) {
 }
 
 inline static void OnTcpClose(uv_handle_t* handle) {
-    delete handle;
+    if (handle) {
+        free(handle);
+    }
 }
 
 }

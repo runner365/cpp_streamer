@@ -3,6 +3,7 @@
 #include "stringex.hpp"
 
 #include <sstream>
+#include <iostream>
 
 namespace cpp_streamer
 {
@@ -224,7 +225,7 @@ int GetVpsSpsPpsFromHevcDecInfo(HEVC_DEC_CONF_RECORD* hevc_dec_info,
     return 0;
 }
 
-std::string HevcDecInfoDemp(HEVC_DEC_CONF_RECORD* hevc_dec_info) {
+std::string HevcDecInfoDump(HEVC_DEC_CONF_RECORD* hevc_dec_info) {
     std::stringstream ss;
 
     ss << "{";
@@ -285,6 +286,7 @@ int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info,
 
     hevc_dec_info->configuration_version = *p;
     if (hevc_dec_info->configuration_version != 1) {
+        std::cout << "Invalid HEVC configuration version: " << (int)hevc_dec_info->configuration_version << std::endl;
         return -1;
     }
     p++;
@@ -350,6 +352,7 @@ int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info,
         HEVC_NALUnit hevc_unit;
 
         if ((p + 5) > end) {
+            std::cout << "Invalid HEVC extra data, not enough data for nal unit header." << std::endl;
             return -1;
         }
         hevc_unit.array_completeness = (*p >> 7) & 0x01;
@@ -364,6 +367,7 @@ int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info,
             p += 2;
 
             if ((p + nalUnitLength) > end) {
+                std::cout << "Invalid HEVC extra data, not enough data for nal unit, nalu len:" << nalUnitLength << std::endl;
                 return -1;
             }
             //copy vps/pps/sps data
@@ -478,6 +482,190 @@ int GetLHevcDecInfoFromExtradata(LHEVC_DEC_CONF_RECORD* hevc_dec_info,
         hevc_dec_info->nalu_vec.push_back(hevc_unit);
     }
     return 0;
+}
+
+// 移除防竞争字节(0x000003 -> 0x0000)
+int RemoveEmulationPreventionBytes(const uint8_t* input, int input_size, uint8_t* output) {
+    int output_pos = 0;
+    int i = 0;
+    
+    while (i < input_size) {
+        if (i + 2 < input_size && 
+            input[i] == 0x00 && input[i + 1] == 0x00 && input[i + 2] == 0x03) {
+            // 发现防竞争字节模式，跳过0x03
+            output[output_pos++] = input[i++];     // 0x00
+            output[output_pos++] = input[i++];     // 0x00
+            i++;  // 跳过0x03
+        } else {
+            output[output_pos++] = input[i++];
+        }
+    }
+    
+    return output_pos;
+}
+
+// 初始化比特流读取器
+void InitBitReader(BitReader* reader, const uint8_t* data, int size) {
+    reader->data = data;
+    reader->size = size;
+    reader->bit_pos = 0;
+}
+
+// 读取指定数量的比特
+uint32_t ReadBits(BitReader* reader, int n) {
+    if (reader->bit_pos + n > reader->size * 8) {
+        return 0; // 超出范围
+    }
+    
+    uint32_t result = 0;
+    for (int i = 0; i < n; i++) {
+        int byte_pos = reader->bit_pos / 8;
+        int bit_pos = reader->bit_pos % 8;
+        
+        if (reader->data[byte_pos] & (0x80 >> bit_pos)) {
+            result |= (1 << (n - 1 - i));
+        }
+        reader->bit_pos++;
+    }
+    
+    return result;
+}
+
+// 读取无符号指数哥伦布编码(ue(v))
+uint32_t ReadUe(BitReader* reader) {
+    int leading_zeros = 0;
+    
+    // 计算前导零的数量
+    while (reader->bit_pos < reader->size * 8 && ReadBits(reader, 1) == 0) {
+        leading_zeros++;
+        if (leading_zeros > 32) {
+            return 0; // 错误处理
+        }
+    }
+    
+    // 如果没有前导零，返回0
+    if (leading_zeros == 0) {
+        return 0;
+    }
+    
+    // 读取剩余的比特
+    uint32_t value = ReadBits(reader, leading_zeros);
+    return (1 << leading_zeros) - 1 + value;
+}
+
+// 主要的HEVC SPS解析函数
+int ParseHevcSpsFinal(const uint8_t* nalu_data, int nalu_size, int* width, int* height, Logger* logger) {
+    if (!nalu_data || nalu_size < 15 || !width || !height) {
+        LogErrorf(logger, "Invalid parameters");
+        return -1; // 参数错误
+    }
+    
+    // 分配缓冲区用于移除防竞争字节
+    uint8_t* clean_data = (uint8_t*)malloc(nalu_size);
+    if (!clean_data) {
+        LogErrorf(logger, "Failed to allocate memory");
+        return -1;
+    }
+    
+    // 移除防竞争字节
+    int clean_size = RemoveEmulationPreventionBytes(nalu_data, nalu_size, clean_data);
+    
+    // 初始化比特流读取器
+    BitReader reader;
+    InitBitReader(&reader, clean_data, clean_size);
+    
+    // 跳过NAL头部 (2字节 = 16比特)
+    ReadBits(&reader, 16);
+    
+    // 解析SPS
+    // sps_video_parameter_set_id (4 bits)
+    ReadBits(&reader, 4);
+    
+    // sps_max_sub_layers_minus1 (3 bits)
+    uint32_t sps_max_sub_layers_minus1 = ReadBits(&reader, 3);
+    
+    // sps_temporal_id_nesting_flag (1 bit)
+    ReadBits(&reader, 1);
+    
+    // 跳过profile_tier_level结构
+    // general_profile_space (2 bits)
+    ReadBits(&reader, 2);
+    // general_tier_flag (1 bit)  
+    ReadBits(&reader, 1);
+    // general_profile_idc (5 bits)
+    ReadBits(&reader, 5);
+    
+    // general_profile_compatibility_flag[32] (32 bits)
+    ReadBits(&reader, 32);
+    
+    // general_progressive_source_flag等 (6 bits)
+    ReadBits(&reader, 6);
+    
+    // 跳过42个保留比特
+    ReadBits(&reader, 32);
+    ReadBits(&reader, 10);
+    
+    // general_level_idc (8 bits)
+    ReadBits(&reader, 8);
+    
+    // 跳过sub_layer相关信息（如果有的话）
+    for (int i = 0; i < sps_max_sub_layers_minus1; i++) {
+        uint32_t sub_layer_profile_present_flag = ReadBits(&reader, 1);
+        uint32_t sub_layer_level_present_flag = ReadBits(&reader, 1);
+        
+        if (sub_layer_profile_present_flag) {
+            // 跳过sub layer profile信息
+            ReadBits(&reader, 32);
+            ReadBits(&reader, 32);
+            ReadBits(&reader, 24);
+        }
+        
+        if (sub_layer_level_present_flag) {
+            ReadBits(&reader, 8);
+        }
+    }
+    
+    // sps_seq_parameter_set_id
+    ReadUe(&reader);
+    
+    // chroma_format_idc
+    uint32_t chroma_format_idc = ReadUe(&reader);
+    
+    if (chroma_format_idc == 3) {
+        // separate_colour_plane_flag
+        ReadBits(&reader, 1);
+    }
+    
+    // pic_width_in_luma_samples - 这是我们需要的宽度
+    uint32_t pic_width_in_luma_samples = ReadUe(&reader);
+    
+    // pic_height_in_luma_samples - 这是我们需要的高度  
+    uint32_t pic_height_in_luma_samples = ReadUe(&reader);
+    
+    // conformance_window_flag
+    uint32_t conformance_window_flag = ReadBits(&reader, 1);
+    
+    uint32_t conf_win_left_offset = 0;
+    uint32_t conf_win_right_offset = 0;
+    uint32_t conf_win_top_offset = 0;
+    uint32_t conf_win_bottom_offset = 0;
+    
+    if (conformance_window_flag) {
+        conf_win_left_offset = ReadUe(&reader);
+        conf_win_right_offset = ReadUe(&reader);
+        conf_win_top_offset = ReadUe(&reader);
+        conf_win_bottom_offset = ReadUe(&reader);
+    }
+    
+    // 计算最终的宽度和高度（考虑conformance window）
+    uint32_t SubWidthC = (chroma_format_idc == 1 || chroma_format_idc == 2) ? 2 : 1;
+    uint32_t SubHeightC = (chroma_format_idc == 1) ? 2 : 1;
+    
+    *width = pic_width_in_luma_samples - SubWidthC * (conf_win_left_offset + conf_win_right_offset);
+    *height = pic_height_in_luma_samples - SubHeightC * (conf_win_top_offset + conf_win_bottom_offset);
+    
+    free(clean_data);
+    return 0; // 成功
 }
 
 }

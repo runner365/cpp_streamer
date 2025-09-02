@@ -319,6 +319,21 @@ target_link_libraries(ws_server_demo rt dl z m ssl crypto pthread uv)
 ENDIF ()
 
 ################################################################
+# example: http server demo
+add_executable(http_server_demo
+            ${PROJECT_SOURCE_DIR}/src/net/http/http_server.cpp
+            ${PROJECT_SOURCE_DIR}/src/net/http/http_session.cpp
+            ${PROJECT_SOURCE_DIR}/src/utils/byte_crypto.cpp
+            ${PROJECT_SOURCE_DIR}/src/utils/base64.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/http_server_demo.cpp)
+add_dependencies(http_server_demo uv openssl)
+IF (APPLE)
+target_link_libraries(http_server_demo dl z m ssl crypto pthread uv)
+ELSEIF (UNIX)
+target_link_libraries(http_server_demo rt dl z m ssl crypto pthread uv)
+ENDIF ()
+
+################################################################
 ## example: oggdump
 ## read a ogg file --> oggdemux streamer --> dump ogg information
 add_executable(oggdump
@@ -353,4 +368,43 @@ IF (APPLE)
 target_link_libraries(ts2ogg_streamer pthread dl z m)
 ELSEIF (UNIX)
 target_link_libraries(ts2ogg_streamer pthread rt dl z m)
+ENDIF ()
+
+################################################################
+## example: wav2pcm
+## read a wav file --> wavdemux --> write a pcm file
+add_executable(wav2pcm
+            ${PROJECT_SOURCE_DIR}/src/format/wav/wav_demuxer.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/wav/wav_demuxer.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/wav2pcm.cpp)
+IF (APPLE)
+target_link_libraries(wav2pcm pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(wav2pcm pthread rt dl z m)
+ENDIF ()
+
+################################################################
+## example: init mp4 writer
+add_executable(init_mp4_writer
+            ${PROJECT_SOURCE_DIR}/src/format/mp4/mp4_box.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/h264_h265_header.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/opus_header.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/init_mp4.cpp)
+IF (APPLE)
+target_link_libraries(init_mp4_writer pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(init_mp4_writer pthread rt dl z m)
+ENDIF ()
+
+################################################################
+## example: init mp4 writer
+add_executable(fmp4_dump
+            ${PROJECT_SOURCE_DIR}/src/format/mp4/mp4_box.hpp
+            ${PROJECT_SOURCE_DIR}/src/format/h264_h265_header.cpp
+            ${PROJECT_SOURCE_DIR}/src/format/opus_header.cpp
+            ${PROJECT_SOURCE_DIR}/src/tools/fmp4_dump.cpp)
+IF (APPLE)
+target_link_libraries(fmp4_dump pthread dl z m)
+ELSEIF (UNIX)
+target_link_libraries(fmp4_dump pthread rt dl z m)
 ENDIF ()

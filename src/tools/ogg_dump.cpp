@@ -37,7 +37,7 @@ public:
     OpusDataCallbackImpl(Logger* logger):logger_(logger)
     {
     }
-    ~OpusDataCallbackImpl()
+    virtual ~OpusDataCallbackImpl()
     {
     }
 public:

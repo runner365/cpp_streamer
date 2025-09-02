@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <sstream>
+#include <iostream>
 
 namespace cpp_streamer
 {
@@ -323,6 +324,7 @@ OpusExtraHandler::~OpusExtraHandler()
 bool OpusExtraHandler::IsExtraData(const uint8_t* data, size_t len) {
     const char opus_str[] = "OpusHead";
 
+    std::cout << "Checking for Opus extra data:" << std::string((const char*)data, sizeof(opus_str)-1) << std::endl;
     if (len <= sizeof(opus_str)) {
         return false;
     }

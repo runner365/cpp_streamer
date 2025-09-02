@@ -123,23 +123,23 @@ public:
         if (pkt_ptr->av_type_ == MEDIA_MOVBOX_TYPE) {
             if (pkt_ptr->box_type_ == "ftyp") {
                 FtypBox* box = (FtypBox*)(pkt_ptr->box_);
-                std::cout << "ftyp box dump:" << box->Dump() << "\r\n";
+                // std::cout << "ftyp box dump:" << box->Dump() << "\r\n";
                 LogInfof(logger_, "ftyp box:%s", box->Dump().c_str());
             } else if (pkt_ptr->box_type_ == "moov") {
                 MoovBox* box = (MoovBox*)(pkt_ptr->box_);
-                std::cout << "moov box dump:" << box->Dump() << "\r\n";
+                //std::cout << "moov box dump:" << box->Dump() << "\r\n";
                 LogInfof(logger_, "moov box:%s", box->Dump().c_str());
             } else if (pkt_ptr->box_type_ == "free") {
                 FreeBox* box = (FreeBox*)(pkt_ptr->box_);
-                std::cout << "free box dump:" << box->Dump() << "\r\n";
+                // std::cout << "free box dump:" << box->Dump() << "\r\n";
                 LogInfof(logger_, "free box:%s", box->Dump().c_str());
             } else if (pkt_ptr->box_type_ == "mdat") {
                 MdatBox* box = (MdatBox*)(pkt_ptr->box_);
-                std::cout << "mdat box dump:" << box->Dump() << "\r\n";
+                // std::cout << "mdat box dump:" << box->Dump() << "\r\n";
                 LogInfof(logger_, "mdat box:%s", box->Dump().c_str());
             } else {
                 Mp4BoxBase* box = (Mp4BoxBase*)(pkt_ptr->box_);
-                std::cout << "box dump:" << box->Dump() << "\r\n";
+                // std::cout << "box dump:" << box->Dump() << "\r\n";
                 LogInfof(logger_, "unknown box:%s", box->Dump().c_str());
             }
         } else if (pkt_ptr->av_type_ == MEDIA_AUDIO_TYPE) {

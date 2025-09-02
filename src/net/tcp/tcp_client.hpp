@@ -24,7 +24,9 @@ inline void OnUVClientAlloc(uv_handle_t* handle,
 inline void OnUVClientRead(uv_stream_t* handle,
                     ssize_t nread,
                     const uv_buf_t* buf);
-inline void OnUVClose(uv_handle_t *handle) {}
+inline void OnUVClose(uv_handle_t *handle) {
+    free(handle);
+}
 
 class TcpClient : public SslCallbackI
 {
@@ -71,8 +73,7 @@ public:
             connect_ = nullptr;
         }
         if (client_) {
-            uv_tcp_close_reset(client_, OnUVClose);
-            free(client_);
+            uv_close((uv_handle_t*)client_, OnUVClose);
             client_ = nullptr;
         }
     }

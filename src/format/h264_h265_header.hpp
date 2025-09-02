@@ -106,6 +106,12 @@ enum HEVC_NALU_TYPE
         NAL_UNIT_INVALID,
 };
 
+typedef struct {
+    const uint8_t* data;
+    int size;
+    int bit_pos;
+} BitReader;
+
 #define GET_H264_NALU_TYPE(code) ((code) & 0x1f)
 
 #define GET_HEVC_NALU_TYPE(code) (HEVC_NALU_TYPE)((code & 0x7E)>>1)
@@ -246,7 +252,7 @@ int GetVpsSpsPpsFromHevcDecInfo(HEVC_DEC_CONF_RECORD* hevc_dec_info,
 int GetHevcDecInfoFromExtradata(HEVC_DEC_CONF_RECORD* hevc_dec_info, 
                                 const uint8_t *extra_data, size_t extra_len);
 
-std::string HevcDecInfoDemp(HEVC_DEC_CONF_RECORD* hevc_dec_info);
+std::string HevcDecInfoDump(HEVC_DEC_CONF_RECORD* hevc_dec_info);
 
 void GetHevcHeader(uint8_t* data, Hevc_Header& header);
 std::string HevcHeaderDump(const Hevc_Header& header);
@@ -254,6 +260,8 @@ std::string HevcHeaderDump(const Hevc_Header& header);
 int GetLHevcDecInfoFromExtradata(LHEVC_DEC_CONF_RECORD* hevc_dec_info, 
                                 const uint8_t *extra_data, size_t extra_len);
 std::string LHevcDecInfoDump(LHEVC_DEC_CONF_RECORD* hevc_dec_info);
+
+int ParseHevcSpsFinal(const uint8_t* nalu_data, int nalu_size, int* width, int* height, Logger* logger);
 
 }
 #endif

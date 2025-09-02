@@ -287,4 +287,37 @@ size_t MakeOpusHeader(uint8_t* data, int sample_rate, int channel) {
     header_len = (size_t)(p - data);
     return header_len;
 }
+
+OpusHeaderInfo ParseOpusHeader(const std::vector<uint8_t>& data) {
+    OpusHeaderInfo info;
+    if (data.size() < 19) {
+        throw std::runtime_error("Opus header too short");
+    }
+    // 0-7: "OpusHead"
+    info.magic = std::string(data.begin() + 1, data.begin() + 8); // 跳过第一个字节
+    info.version = data[8];
+    info.channels = data[9];
+    info.preSkip = data[10] | (data[11] << 8);
+    info.inputSampleRate = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+    info.outputGain = data[16] | (data[17] << 8);
+    info.channelMapping = data[18];
+    return info;
+}
+
+OpusHeaderInfo ParseOpusHeader(const uint8_t* data, size_t size) {
+    OpusHeaderInfo info;
+    if (size < 19 || data == nullptr) {
+        throw std::runtime_error("Opus header too short");
+    }
+    // 0-7: "OpusHead"
+    info.magic = std::string(data + 1, data + 8); // 跳过第一个字节
+    info.version = data[8];
+    info.channels = data[9];
+    info.preSkip = data[10] | (data[11] << 8);
+    info.inputSampleRate = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+    info.outputGain = data[16] | (data[17] << 8);
+    info.channelMapping = data[18];
+    return info;
+}
+
 }

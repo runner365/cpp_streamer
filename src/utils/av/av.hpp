@@ -203,6 +203,9 @@ class IoReadInterface
 public:
     virtual int Read(size_t offset, uint8_t* data_buffer, size_t data_buffer_len) = 0;
 };
+
+#define MAKE_TAG(a, b, c, d) (((uint32_t)(a) << 24) | (((uint32_t)(b) << 16) | (((uint32_t)(c) << 8) | ((uint32_t)(d)))))
+
 }
 #endif
 

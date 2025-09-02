@@ -19,6 +19,16 @@ namespace cpp_streamer
 #define FLV_8bits_SAMPLE_SIZE  0
 #define FLV_16bits_SAMPLE_SIZE 1
 
+typedef struct OpusHeaderInfo_S {
+    std::string magic;   // "OpusHead"
+    uint8_t version;
+    uint8_t channels;
+    uint16_t preSkip;
+    uint32_t inputSampleRate;
+    uint16_t outputGain;
+    uint8_t channelMapping;
+} OpusHeaderInfo;
+
 bool GetAudioInfoByFlvHeader(uint8_t flag,
                        MEDIA_CODEC_TYPE& codec_type, 
                        int& sample_rate, 
@@ -46,6 +56,8 @@ int MakeAdts(uint8_t* data, uint8_t object_type,
              int sample_rate, int channel, int full_frame_size, bool mpegts2 = true);
 
 size_t MakeOpusHeader(uint8_t* data, int sample_rate, int channel);
+OpusHeaderInfo ParseOpusHeader(const std::vector<uint8_t>& data);
+OpusHeaderInfo ParseOpusHeader(const uint8_t* data, size_t size);
 
 }
 
